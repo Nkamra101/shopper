@@ -1,0 +1,409 @@
+:root {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  color: #0f172a;
+  background:
+    radial-gradient(circle at top left, rgba(110, 231, 183, 0.28), transparent 32%),
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.2), transparent 24%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  color: #0f172a;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  padding: 32px 24px;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px);
+}
+
+.brand-block {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.brand-badge {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #111827, #334155);
+  color: white;
+  font-weight: 800;
+}
+
+.brand-block h1,
+.page-header h2,
+.public-left h1,
+.confirmation-card h1 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.nav-links,
+.stack,
+.card-list,
+.public-meta,
+.slot-section,
+.confirmation-card,
+.booking-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.nav-link,
+.sidebar-card,
+.section-card,
+.stat-card,
+.booking-card,
+.event-card,
+.public-card,
+.confirmation-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 20px 50px rgba(148, 163, 184, 0.15);
+}
+
+.nav-link {
+  padding: 14px 16px;
+  border-radius: 16px;
+  transition: 180ms ease;
+}
+
+.nav-link.active {
+  background: #0f172a;
+  color: white;
+}
+
+.sidebar-card {
+  padding: 18px;
+  border-radius: 20px;
+  margin-top: 28px;
+}
+
+.page-area,
+.public-page,
+.confirmation-page {
+  padding: 32px;
+}
+
+.page-header,
+.section-header,
+.event-card-top,
+.button-row,
+.booking-card,
+.public-card,
+.availability-row,
+.day-column,
+.filter-tabs,
+.timezone-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.header-pill,
+.status-pill,
+.tab-button,
+.date-chip,
+.slot-button,
+.secondary-button,
+.ghost-button,
+.primary-button {
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.header-pill,
+.status-pill {
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 0.95fr;
+  gap: 24px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.stat-card,
+.section-card,
+.event-card,
+.booking-card,
+.public-card,
+.confirmation-card {
+  border-radius: 28px;
+  padding: 22px;
+}
+
+.stat-card span {
+  color: #64748b;
+}
+
+.stat-card strong {
+  font-size: 34px;
+}
+
+.section-header {
+  margin-bottom: 18px;
+}
+
+.section-header p,
+.event-card p,
+.booking-card p,
+.public-left p,
+.confirmation-card p {
+  margin: 0;
+  color: #475569;
+}
+
+.card-list {
+  gap: 14px;
+}
+
+.event-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.color-dot {
+  width: 14px;
+  height: 14px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+
+.event-card-top {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #334155;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #fff;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.tab-button,
+.date-chip,
+.slot-button {
+  cursor: pointer;
+  padding: 12px 18px;
+  background: white;
+}
+
+.primary-button {
+  background: #0f172a;
+  color: white;
+}
+
+.ghost-button {
+  background: #fff7ed;
+}
+
+.secondary-button {
+  background: #f8fafc;
+}
+
+.inline-message {
+  margin: 0;
+  color: #14532d;
+  font-weight: 600;
+}
+
+.availability-table {
+  display: grid;
+  gap: 12px;
+}
+
+.availability-row {
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.day-column {
+  min-width: 180px;
+  justify-content: flex-start;
+}
+
+.time-divider {
+  color: #64748b;
+}
+
+.filter-tabs {
+  justify-content: flex-start;
+  margin-bottom: 18px;
+}
+
+.tab-button.active,
+.date-chip.active,
+.slot-button.active {
+  background: #0f172a;
+  color: white;
+}
+
+.status-pill.confirmed {
+  background: #dcfce7;
+}
+
+.status-pill.cancelled {
+  background: #fee2e2;
+}
+
+.public-page,
+.confirmation-page {
+  display: grid;
+  place-items: center;
+}
+
+.public-card {
+  width: min(1120px, 100%);
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+
+.public-left {
+  padding-right: 16px;
+}
+
+.date-picker-grid,
+.slot-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+.slot-grid {
+  margin-bottom: 20px;
+}
+
+.confirmation-card {
+  width: min(520px, 100%);
+}
+
+@media (max-width: 980px) {
+  .app-shell,
+  .page-grid,
+  .public-card {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  }
+
+  .stats-grid,
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-area,
+  .public-page,
+  .confirmation-page,
+  .sidebar {
+    padding: 20px;
+  }
+
+  .page-header,
+  .section-header,
+  .availability-row,
+  .booking-card,
+  .public-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .button-row {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .day-column {
+    min-width: 0;
+  }
+}
