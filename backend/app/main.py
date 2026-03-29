@@ -22,7 +22,7 @@ app = FastAPI(title="Shopper Scheduling API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://shopper-nk.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
