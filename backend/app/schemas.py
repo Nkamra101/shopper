@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -55,6 +55,7 @@ class BookingRead(BaseModel):
     booker_email: str
     notes: str
     status: str
+    meeting_url: str
     start_time: datetime
     end_time: datetime
     created_at: datetime
@@ -84,6 +85,24 @@ class BookingCreate(BaseModel):
     booker_email: EmailStr
     notes: str = Field(default="", max_length=500)
     start_time: datetime
+
+
+class BookingReschedule(BaseModel):
+    start_time: datetime
+
+
+class BlockoutDateCreate(BaseModel):
+    date: date
+    reason: str = Field(default="", max_length=120)
+
+
+class BlockoutDateRead(BaseModel):
+    id: int
+    date: date
+    reason: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DashboardSummary(BaseModel):

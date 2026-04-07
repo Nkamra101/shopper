@@ -16,13 +16,20 @@ export default function AvailabilityPage() {
   const toast = useToast();
   const [timezone, setTimezone] = useState("Asia/Kolkata");
   const [rules, setRules] = useState(fallbackRules);
+  const [blockouts, setBlockouts] = useState([]);
+  const [newBlockoutDate, setNewBlockoutDate] = useState("");
+  const [newBlockoutReason, setNewBlockoutReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingBlockout, setSavingBlockout] = useState(false);
 
   useEffect(() => {
     async function loadAvailability() {
       try {
-        const data = await api.getAvailability();
+        const [data, blockoutsData] = await Promise.all([
+          api.getAvailability(),
+          api.getBlockouts()
+        ]);
         setTimezone(data.timezone);
         const normalized = fallbackRules.map((defaultRule) => {
           const existing = data.rules.find((rule) => rule.day_of_week === defaultRule.day_of_week);
@@ -35,6 +42,7 @@ export default function AvailabilityPage() {
             : defaultRule;
         });
         setRules(normalized);
+        setBlockouts(blockoutsData);
       } catch (error) {
         toast.error(error.message || "Failed to load availability.");
       } finally {
@@ -45,6 +53,34 @@ export default function AvailabilityPage() {
     loadAvailability();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleAddBlockout(e) {
+    e.preventDefault();
+    if (!newBlockoutDate) return;
+    setSavingBlockout(true);
+    try {
+      const added = await api.createBlockout({ date: newBlockoutDate, reason: newBlockoutReason });
+      setBlockouts([...blockouts, added].sort((a,b) => a.date.localeCompare(b.date)));
+      setNewBlockoutDate("");
+      setNewBlockoutReason("");
+      toast.success("Blockout date added.");
+    } catch (error) {
+      toast.error(error.message || "Failed to add blockout.");
+    } finally {
+      setSavingBlockout(false);
+    }
+  }
+
+  async function handleDeleteBlockout(date) {
+    if (!window.confirm(`Remove blockout for ${date}?`)) return;
+    try {
+      await api.deleteBlockout(date);
+      setBlockouts((current) => current.filter((b) => b.date !== date));
+      toast.success("Blockout removed.");
+    } catch (error) {
+      toast.error(error.message || "Failed to remove blockout.");
+    }
+  }
 
   function updateRule(index, changes) {
     setRules((current) => current.map((rule, i) => (i === index ? { ...rule, ...changes } : rule)));
@@ -64,6 +100,7 @@ export default function AvailabilityPage() {
   }
 
   return (
+    <div className="stack">
     <SectionCard
       title="Weekly availability"
       subtitle="Set working hours once and the public booking page will show matching slots automatically."
@@ -120,5 +157,57 @@ export default function AvailabilityPage() {
         </div>
       </form>
     </SectionCard>
+
+    <SectionCard
+      title="Blocked Dates"
+      subtitle="Specific dates where all availability is completely turned off."
+    >
+      <form onSubmit={handleAddBlockout} className="form-grid" style={{ marginBottom: "var(--space-6)" }}>
+        <label>
+          Date
+          <input
+            type="date"
+            value={newBlockoutDate}
+            onChange={(e) => setNewBlockoutDate(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          Reason (optional)
+          <input
+            type="text"
+            placeholder="e.g. Vacation"
+            value={newBlockoutReason}
+            onChange={(e) => setNewBlockoutReason(e.target.value)}
+          />
+        </label>
+        <div className="button-row full-width">
+          <button type="submit" className="primary-button" disabled={!newBlockoutDate || savingBlockout}>
+            {savingBlockout ? "Adding..." : "Block Date"}
+          </button>
+        </div>
+      </form>
+
+      {blockouts.length > 0 ? (
+        <div className="card-list">
+          {blockouts.map((b) => (
+            <article key={b.id} className="event-card" style={{ "--event-accent": "var(--danger)", padding: "var(--space-4)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h4 style={{ margin: "0 0 4px" }}>{b.date}</h4>
+                  <p style={{ margin: 0, fontSize: "14px", color: "var(--text-muted)" }}>{b.reason || "No reason given"}</p>
+                </div>
+                <button type="button" className="ghost-button" onClick={() => handleDeleteBlockout(b.date)}>
+                  Remove
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>No blocked dates yet.</p>
+      )}
+    </SectionCard>
+    </div>
   );
 }

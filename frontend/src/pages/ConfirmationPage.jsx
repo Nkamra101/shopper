@@ -50,6 +50,17 @@ export default function ConfirmationPage() {
             <p>{booking.event_type?.title}</p>
             <p>{formatDateTime(booking.start_time)}</p>
             <p>Booked by: {booking.booker_name}</p>
+            {booking.meeting_url && (
+              <a 
+                href={booking.meeting_url} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="primary-button" 
+                style={{ marginTop: "1rem" }}
+              >
+                Join Video Call
+              </a>
+            )}
           </>
         ) : (
           <p>Booking details could not be loaded.</p>

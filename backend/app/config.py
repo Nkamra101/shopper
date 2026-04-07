@@ -55,10 +55,18 @@ class Settings:
     )
 
     # ----- Behaviour toggles -----
-    SEED_ON_STARTUP: bool = _bool_env("SEED_ON_STARTUP", default=True)
+    SEED_ON_STARTUP: bool = _bool_env("SEED_ON_STARTUP", default=False)
 
     # ----- Defaults -----
     DEFAULT_TIMEZONE: str = os.getenv("DEFAULT_TIMEZONE", "Asia/Kolkata")
+
+    # ----- SMTP Settings -----
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASS: str = os.getenv("SMTP_PASS", "")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "")
+    SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "5"))
 
     @property
     def is_production(self) -> bool:

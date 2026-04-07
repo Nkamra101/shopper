@@ -1,6 +1,7 @@
+import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -13,6 +14,7 @@ from ..services.booking_service import (
     get_public_event_type,
     normalize_booking_start,
 )
+from ..services.email_service import send_email_background
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -53,7 +55,7 @@ def get_slots(slug: str, date: str = Query(...), db: Session = Depends(get_db)):
     response_model=BookingRead,
     status_code=status.HTTP_201_CREATED,
 )
-def create_booking(slug: str, payload: BookingCreate, db: Session = Depends(get_db)):
+def create_booking(slug: str, payload: BookingCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     event_type, timezone_name = get_public_event_type(db, slug)
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
@@ -81,6 +83,7 @@ def create_booking(slug: str, payload: BookingCreate, db: Session = Depends(get_
         booker_email=payload.booker_email,
         notes=payload.notes,
         status="confirmed",
+        meeting_url=f"https://meet.google.com/{uuid.uuid4().hex[:3]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:3]}",
         start_time=start_utc,
         end_time=start_utc + timedelta(minutes=event_type.duration),
     )
@@ -97,6 +100,16 @@ def create_booking(slug: str, payload: BookingCreate, db: Session = Depends(get_
     created = db.scalar(
         select(Booking).options(joinedload(Booking.event_type)).where(Booking.id == booking.id)
     )
+
+    background_tasks.add_task(
+        send_email_background,
+        action="booked",
+        recipient=created.booker_email,
+        event_title=created.event_type.title,
+        start_time=created.start_time.strftime("%A, %B %d, %Y at %I:%M %p"),
+        meeting_url=created.meeting_url
+    )
+
     return created
 
 

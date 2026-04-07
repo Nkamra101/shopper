@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import AvailabilityRule, AvailabilitySetting, Booking, EventType
+from ..models import AvailabilityRule, AvailabilitySetting, BlockoutDate, Booking, EventType
 
 
 def get_timezone(db: Session) -> str:
@@ -45,6 +45,12 @@ def generate_slots(db: Session, event_type: EventType, requested_date: date) -> 
         )
     )
     if not rule:
+        return []
+
+    is_blocked = db.scalar(
+        select(BlockoutDate).where(BlockoutDate.date == requested_date)
+    )
+    if is_blocked:
         return []
 
     # Build the working-hour window in the configured timezone.

@@ -14,6 +14,7 @@ const emptyForm = {
 };
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PREDEFINED_COLORS = ["#0f172a", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899"];
 
 function validate(form) {
   const errors = {};
@@ -255,11 +256,27 @@ export default function DashboardPage() {
           </label>
           <label>
             Accent color
-            <input
-              type="color"
-              value={form.accent_color}
-              onChange={(e) => setForm({ ...form, accent_color: e.target.value })}
-            />
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '6px' }}>
+              {PREDEFINED_COLORS.map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    backgroundColor: color,
+                    border: form.accent_color === color ? '3px solid var(--bg)' : '2px solid transparent',
+                    boxShadow: form.accent_color === color ? '0 0 0 2px var(--text)' : 'none',
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                  onClick={() => setForm({ ...form, accent_color: color })}
+                  title={color}
+                  aria-label={`Select accent color ${color}`}
+                />
+              ))}
+            </div>
           </label>
           <div className="button-row full-width">
             <button type="submit" className="primary-button" disabled={!isValid || submitting}>
