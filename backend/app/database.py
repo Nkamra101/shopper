@@ -1,26 +1,22 @@
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-import pymysql
-pymysql.install_as_MySQLdb()
+from .config import settings
 
-load_dotenv()
+database_url = settings.DATABASE_URL
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_SQLITE_URL = f"sqlite:///{BASE_DIR / 'shopper.db'}"
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+# Some providers (Render, Railway, Heroku) still hand out legacy "postgres://"
+# URLs, but SQLAlchemy 2.x requires "postgresql://".
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
 
 engine = create_engine(
-    DATABASE_URL,
+    database_url,
     future=True,
     connect_args=connect_args,
-    pool_pre_ping=True
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

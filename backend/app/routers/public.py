@@ -1,13 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
 from ..models import Booking
 from ..schemas import BookingCreate, BookingRead, PublicEventTypeRead, SlotRead
-from ..services.booking_service import generate_slots, get_public_event_type, get_timezone
+from ..services.booking_service import (
+    generate_slots,
+    get_public_event_type,
+    normalize_booking_start,
+)
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -35,28 +40,39 @@ def get_slots(slug: str, date: str = Query(...), db: Session = Depends(get_db)):
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
 
-    requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+    try:
+        requested_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date. Use YYYY-MM-DD.")
+
     return generate_slots(db, event_type, requested_date)
 
 
-@router.post("/event-types/{slug}/book", response_model=BookingRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/event-types/{slug}/book",
+    response_model=BookingRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_booking(slug: str, payload: BookingCreate, db: Session = Depends(get_db)):
     event_type, timezone_name = get_public_event_type(db, slug)
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
 
-    requested_date = payload.start_time.date()
-    available_slots = generate_slots(db, event_type, requested_date)
-    selected_key = payload.start_time.strftime("%Y-%m-%dT%H:%M:%S")
-    valid_slot = next(
-        (
-            slot
-            for slot in available_slots
-            if datetime.fromisoformat(slot["start_time"]).strftime("%Y-%m-%dT%H:%M:%S") == selected_key
-        ),
-        None,
-    )
-    if not valid_slot:
+    # Convert the requested start into naive UTC so it can be compared and
+    # stored consistently with generate_slots().
+    start_utc = normalize_booking_start(payload.start_time, timezone_name)
+
+    # Re-check availability in the same request. The partial unique index
+    # below provides the final race-condition guarantee.
+    requested_date_local = payload.start_time.date()
+    available_slots = generate_slots(db, event_type, requested_date_local)
+    available_utc_keys = {
+        normalize_booking_start(
+            datetime.fromisoformat(slot["start_time"]), timezone_name
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+        for slot in available_slots
+    }
+    if start_utc.strftime("%Y-%m-%dT%H:%M:%S") not in available_utc_keys:
         raise HTTPException(status_code=400, detail="That slot is no longer available.")
 
     booking = Booking(
@@ -65,11 +81,18 @@ def create_booking(slug: str, payload: BookingCreate, db: Session = Depends(get_
         booker_email=payload.booker_email,
         notes=payload.notes,
         status="confirmed",
-        start_time=payload.start_time.replace(tzinfo=None),
-        end_time=datetime.fromisoformat(valid_slot["end_time"]).replace(tzinfo=None),
+        start_time=start_utc,
+        end_time=start_utc + timedelta(minutes=event_type.duration),
     )
     db.add(booking)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="That slot was just booked by someone else. Please pick another.",
+        )
 
     created = db.scalar(
         select(Booking).options(joinedload(Booking.event_type)).where(Booking.id == booking.id)
@@ -79,8 +102,9 @@ def create_booking(slug: str, payload: BookingCreate, db: Session = Depends(get_
 
 @router.get("/bookings/{booking_id}", response_model=BookingRead)
 def get_booking(booking_id: int, db: Session = Depends(get_db)):
-    booking = db.scalar(select(Booking).options(joinedload(Booking.event_type)).where(Booking.id == booking_id))
+    booking = db.scalar(
+        select(Booking).options(joinedload(Booking.event_type)).where(Booking.id == booking_id)
+    )
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
     return booking
-
