@@ -71,8 +71,4 @@ npm run dev
 - One main weekly availability schedule is enough for the required version
 - Email notifications and rescheduling are not included in this first version
 
-## Notes
-
-- The visual style is inspired by Cal.com patterns, but intentionally kept simpler so it feels achievable for an intern-level assignment.
-- If you want to deploy with MySQL, create the database first and point `DATABASE_URL` to it.
 
