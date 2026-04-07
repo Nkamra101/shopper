@@ -1,0 +1,30 @@
+# Environment & secrets (note: .env.example IS committed as a template)
+.env
+.env.local
+.env.*.local
+
+# Virtualenv
+.venv/
+venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Local SQLite DB
+*.db
+*.sqlite3
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Coverage / tests
+.coverage
+.pytest_cache/
+htmlcov/

@@ -1,14 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Booking, EventType
 from ..schemas import DashboardSummary, EventTypeCreate, EventTypeRead, EventTypeUpdate
 
 router = APIRouter(prefix="/api", tags=["event-types"])
+
+
+def _utcnow_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @router.get("/event-types", response_model=list[EventTypeRead])
@@ -36,7 +40,9 @@ def update_event_type(event_type_id: int, payload: EventTypeUpdate, db: Session 
         raise HTTPException(status_code=404, detail="Event type not found.")
 
     existing_slug = db.scalar(
-        select(EventType).where(EventType.url_slug == payload.url_slug, EventType.id != event_type_id)
+        select(EventType).where(
+            EventType.url_slug == payload.url_slug, EventType.id != event_type_id
+        )
     )
     if existing_slug:
         raise HTTPException(status_code=400, detail="Slug already exists.")
@@ -61,17 +67,26 @@ def delete_event_type(event_type_id: int, db: Session = Depends(get_db)):
 
 @router.get("/summary", response_model=DashboardSummary)
 def get_dashboard_summary(db: Session = Depends(get_db)):
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     event_types_count = db.scalar(select(func.count()).select_from(EventType)) or 0
-    upcoming_count = db.scalar(
-        select(func.count()).select_from(Booking).where(Booking.start_time >= now, Booking.status == "confirmed")
-    ) or 0
-    past_count = db.scalar(
-        select(func.count()).select_from(Booking).where(Booking.start_time < now)
-    ) or 0
+    upcoming_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(Booking)
+            .where(Booking.start_time >= now, Booking.status == "confirmed")
+        )
+        or 0
+    )
+    past_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(Booking)
+            .where(Booking.start_time < now, Booking.status == "confirmed")
+        )
+        or 0
+    )
     return DashboardSummary(
         event_types_count=event_types_count,
         upcoming_bookings_count=upcoming_count,
         past_bookings_count=past_count,
     )
-

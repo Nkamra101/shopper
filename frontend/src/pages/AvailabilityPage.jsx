@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import SectionCard from "../components/SectionCard";
+import { useToast } from "../components/Toast";
 import { api } from "../services/api";
 
 const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -12,9 +13,11 @@ const fallbackRules = dayNames.map((_, index) => ({
 }));
 
 export default function AvailabilityPage() {
+  const toast = useToast();
   const [timezone, setTimezone] = useState("Asia/Kolkata");
   const [rules, setRules] = useState(fallbackRules);
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadAvailability() {
@@ -33,24 +36,30 @@ export default function AvailabilityPage() {
         });
         setRules(normalized);
       } catch (error) {
-        setMessage(error.message);
+        toast.error(error.message || "Failed to load availability.");
+      } finally {
+        setLoading(false);
       }
     }
 
     loadAvailability();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateRule(index, changes) {
-    setRules((current) => current.map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, ...changes } : rule)));
+    setRules((current) => current.map((rule, i) => (i === index ? { ...rule, ...changes } : rule)));
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
+    setSaving(true);
     try {
       await api.updateAvailability({ timezone, rules });
-      setMessage("Availability updated.");
+      toast.success("Availability updated.");
     } catch (error) {
-      setMessage(error.message);
+      toast.error(error.message || "Could not save availability.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -62,7 +71,7 @@ export default function AvailabilityPage() {
       <form className="stack" onSubmit={handleSubmit}>
         <label className="timezone-row">
           Timezone
-          <select value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+          <select value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={loading}>
             <option value="Asia/Kolkata">Asia/Kolkata</option>
             <option value="Asia/Dubai">Asia/Dubai</option>
             <option value="Europe/London">Europe/London</option>
@@ -72,40 +81,44 @@ export default function AvailabilityPage() {
 
         <div className="availability-table">
           {rules.map((rule, index) => (
-            <div key={rule.day_of_week} className="availability-row">
-              <div className="day-column">
+            <div
+              key={rule.day_of_week}
+              className={rule.is_active ? "availability-row" : "availability-row inactive"}
+            >
+              <label className="day-column" style={{ flexDirection: "row" }}>
                 <input
                   type="checkbox"
                   checked={rule.is_active}
-                  onChange={(event) => updateRule(index, { is_active: event.target.checked })}
+                  onChange={(e) => updateRule(index, { is_active: e.target.checked })}
+                  aria-label={`Enable ${dayNames[rule.day_of_week]}`}
                 />
                 <span>{dayNames[rule.day_of_week]}</span>
-              </div>
+              </label>
               <input
                 type="time"
                 value={rule.start_time}
                 disabled={!rule.is_active}
-                onChange={(event) => updateRule(index, { start_time: event.target.value })}
+                onChange={(e) => updateRule(index, { start_time: e.target.value })}
+                aria-label={`${dayNames[rule.day_of_week]} start time`}
               />
               <span className="time-divider">to</span>
               <input
                 type="time"
                 value={rule.end_time}
                 disabled={!rule.is_active}
-                onChange={(event) => updateRule(index, { end_time: event.target.value })}
+                onChange={(e) => updateRule(index, { end_time: e.target.value })}
+                aria-label={`${dayNames[rule.day_of_week]} end time`}
               />
             </div>
           ))}
         </div>
 
         <div className="button-row">
-          <button type="submit" className="primary-button">
-            Save availability
+          <button type="submit" className="primary-button" disabled={saving || loading}>
+            {saving ? "Saving..." : "Save availability"}
           </button>
-          {message ? <p className="inline-message">{message}</p> : null}
         </div>
       </form>
     </SectionCard>
   );
 }
-

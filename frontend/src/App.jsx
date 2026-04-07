@@ -4,31 +4,31 @@ import AvailabilityPage from "./pages/AvailabilityPage";
 import BookingsPage from "./pages/BookingsPage";
 import PublicBookingPage from "./pages/PublicBookingPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
+import ThemeToggle from "./components/ThemeToggle";
 
-function AdminLayout({ children }) {
-  const navItems = [
-    { to: "/", label: "Event Types" },
-    { to: "/availability", label: "Availability" },
-    { to: "/bookings", label: "Bookings" },
-  ];
+const navItems = [
+  { to: "/", label: "Event Types", end: true },
+  { to: "/availability", label: "Availability", end: false },
+  { to: "/bookings", label: "Bookings", end: false },
+];
 
+function AdminLayout({ children, title, subtitle }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <span style={{ fontSize: "1.4rem" }} className="brand-badge">👀</span>
+          <span className="brand-badge" aria-hidden="true">👀</span>
           <div>
-           { /*<p className="eyebrow">Beginner Level Demo</p> */}
-            <h1 style={{ fontSize: "1.3rem" }}>Let's Book up🫴</h1>
+            <h1>Let's Book up</h1>
           </div>
         </div>
 
-        <nav className="nav-links">
+        <nav className="nav-links" aria-label="Main">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === "/"}
+              end={item.end}
               className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
             >
               {item.label}
@@ -40,13 +40,18 @@ function AdminLayout({ children }) {
           <p className="eyebrow">Public demo</p>
           <p>Sample booking links are generated from the event type slugs.</p>
         </div>
+
+        <div className="sidebar-footer">
+          <span className="sidebar-footer-label">Appearance</span>
+          <ThemeToggle />
+        </div>
       </aside>
 
       <main className="page-area">
         <header className="page-header">
           <div>
-            {/*<p className="eyebrow">Cal.com style inspired flow</p> */}
-            <h2>Scheduling dashboard</h2>
+            <p className="eyebrow">{subtitle}</p>
+            <h2>{title}</h2>
           </div>
           <div className="header-pill">Default user is signed in</div>
         </header>
@@ -62,7 +67,7 @@ export default function App() {
       <Route
         path="/"
         element={
-          <AdminLayout>
+          <AdminLayout title="Event Types" subtitle="Scheduling dashboard">
             <DashboardPage />
           </AdminLayout>
         }
@@ -70,7 +75,7 @@ export default function App() {
       <Route
         path="/availability"
         element={
-          <AdminLayout>
+          <AdminLayout title="Availability" subtitle="Weekly schedule">
             <AvailabilityPage />
           </AdminLayout>
         }
@@ -78,7 +83,7 @@ export default function App() {
       <Route
         path="/bookings"
         element={
-          <AdminLayout>
+          <AdminLayout title="Bookings" subtitle="Upcoming and past meetings">
             <BookingsPage />
           </AdminLayout>
         }
@@ -88,4 +93,3 @@ export default function App() {
     </Routes>
   );
 }
-
