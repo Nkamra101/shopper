@@ -39,5 +39,8 @@ export const api = {
   createBooking: (slug, payload) =>
     request(`/api/public/event-types/${slug}/book`, { method: "POST", body: JSON.stringify(payload) }),
   getPublicBooking: (id) => request(`/api/public/bookings/${id}`),
+  getBlockouts: () => request("/api/blockouts"),
+  createBlockout: (payload) => request("/api/blockouts", { method: "POST", body: JSON.stringify(payload) }),
+  deleteBlockout: (date) => request(`/api/blockouts/${date}`, { method: "DELETE" }),
+  rescheduleBooking: (id, payload) => request(`/api/bookings/${id}/reschedule`, { method: "POST", body: JSON.stringify(payload) }),
 };
-

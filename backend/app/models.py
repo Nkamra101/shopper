@@ -1,6 +1,6 @@
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -44,6 +44,16 @@ class AvailabilityRule(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
 
 
+class BlockoutDate(Base):
+    __tablename__ = "blockout_dates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    date: Mapped[date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+
 class Booking(Base):
     __tablename__ = "bookings"
 
@@ -55,6 +65,7 @@ class Booking(Base):
     booker_email: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="confirmed", index=True)
+    meeting_url: Mapped[str] = mapped_column(String(255), default="")
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

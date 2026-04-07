@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from .config import settings
 from .database import Base, SessionLocal, engine
-from .routers import availability, bookings, event_types, public
+from .routers import availability, blockouts, bookings, event_types, public
 from .seed import seed_database
 
 # ----- Logging -----
@@ -104,3 +104,4 @@ app.include_router(event_types.router)
 app.include_router(availability.router)
 app.include_router(bookings.router)
 app.include_router(public.router)
+app.include_router(blockouts.router)
