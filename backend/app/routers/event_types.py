@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from fastapi import BackgroundTasks
+
 from ..database import get_db
 from ..models import Booking, EventType
 from ..schemas import DashboardSummary, EventTypeCreate, EventTypeRead, EventTypeUpdate
+from ..services.email_service import send_email_background
 
 router = APIRouter(prefix="/api", tags=["event-types"])
 
@@ -56,10 +59,35 @@ def update_event_type(event_type_id: int, payload: EventTypeUpdate, db: Session 
 
 
 @router.delete("/event-types/{event_type_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_event_type(event_type_id: int, db: Session = Depends(get_db)):
+def delete_event_type(
+    event_type_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     event_type = db.get(EventType, event_type_id)
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
+
+    # Notify all upcoming confirmed bookers that their meeting is cancelled
+    # before the event type (and its bookings) are removed via cascade.
+    now = _utcnow_naive()
+    upcoming = db.scalars(
+        select(Booking).where(
+            Booking.event_type_id == event_type_id,
+            Booking.status == "confirmed",
+            Booking.start_time >= now,
+        )
+    ).all()
+    event_title = event_type.title
+    for booking in upcoming:
+        background_tasks.add_task(
+            send_email_background,
+            action="cancelled",
+            recipient=booking.booker_email,
+            event_title=event_title,
+            start_time=booking.start_time.strftime("%A, %B %d, %Y at %I:%M %p"),
+            meeting_url=booking.meeting_url or None,
+        )
 
     db.delete(event_type)
     db.commit()

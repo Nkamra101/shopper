@@ -4,7 +4,7 @@ A fullstack scheduling app inspired by the Cal.com assignment brief.
 
 - **Frontend:** React + Vite + React Router (light/dark theme, toasts, skeleton loading, accessible forms)
 - **Backend:** FastAPI + SQLAlchemy 2 (PostgreSQL preferred, SQLite fallback)
-- **Features:** event types, weekly availability with timezone, public booking page with slot generation, double-booking prevention (DB-level partial unique index on Postgres), bookings dashboard with upcoming/past filtering and cancellation
+- **Features:** event types, weekly availability with timezone, public booking page with slot generation, double-booking prevention (DB-level partial unique index on Postgres), bookings dashboard with upcoming/past filtering, reschedule and cancellation, transactional emails for booking lifecycle, and email OTP verification before booking
 
 ## Project Structure
 
@@ -21,7 +21,6 @@ frontend/     React application
 cd backend
 python -m venv .venv
 .venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS / Linux
 pip install -r requirements.txt
 copy .env.example .env          # edit DATABASE_URL inside
 uvicorn app.main:app --reload
@@ -60,6 +59,39 @@ All runtime configuration is environment-driven (see `backend/.env.example`):
 | `DEFAULT_TIMEZONE` | IANA timezone used for availability / slot generation                     | `Asia/Kolkata`         |
 
 Legacy `postgres://` URLs from providers (Render, Railway, Heroku) are automatically normalised to `postgresql://`.
+
+### Email (SMTP) configuration
+
+The app sends two kinds of emails:
+
+1. **OTP verification codes** to bookers, before they're allowed to confirm a booking (synchronous; the booker is waiting on it).
+2. **Booking lifecycle notifications** — confirmed / rescheduled / cancelled — sent in the background.
+
+Configure SMTP via these env vars (Gmail with an App Password is the recommended path):
+
+| Variable               | Purpose                                          | Example                       |
+| ---------------------- | ------------------------------------------------ | ----------------------------- |
+| `SMTP_HOST`            | SMTP server hostname                             | `smtp.gmail.com`              |
+| `SMTP_PORT`            | `587` for STARTTLS, `465` for SSL                | `587`                         |
+| `SMTP_USER`            | SMTP username                                    | `you@gmail.com`               |
+| `SMTP_PASS`            | SMTP password / app password                     | `<16-char app password>`      |
+| `SMTP_FROM`            | From address (defaults to `SMTP_USER` if unset)  | `you@gmail.com`               |
+| `SMTP_FROM_NAME`       | Display name on outgoing mail                    | `Shopper Scheduler`           |
+| `SMTP_TIMEOUT_SECONDS` | Per-attempt SMTP timeout                         | `10`                          |
+| `SMTP_RETRY_COUNT`     | Extra retries on top of the first attempt        | `1`                           |
+
+**Gmail setup:** turn on 2-Step Verification on the Google account, generate an App Password (Google Account → Security → App passwords), and use that 16-character value as `SMTP_PASS`. Regular account passwords will not work.
+
+If `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` are missing the app boots fine but every email send is logged and skipped — and the OTP `/request` endpoint returns 503, so booking is effectively disabled until SMTP is configured.
+
+### OTP / verification token tuning
+
+| Variable                          | Purpose                                                                | Default |
+| --------------------------------- | ---------------------------------------------------------------------- | ------- |
+| `OTP_TTL_SECONDS`                 | How long an issued code stays valid                                    | `600`   |
+| `OTP_RATE_LIMIT_SECONDS`          | Minimum gap between code requests for the same email                   | `60`    |
+| `OTP_MAX_ATTEMPTS`                | Wrong-code attempts allowed before the code is burned                  | `5`     |
+| `VERIFICATION_TOKEN_TTL_SECONDS`  | Lifetime of the bearer token issued after successful verification      | `900`   |
 
 ## Deployment
 
@@ -112,9 +144,12 @@ A `render.yaml` is included at `backend/render.yaml` for infrastructure-as-code 
 | PUT    | `/api/availability`                              | Replace weekly availability               |
 | GET    | `/api/bookings?scope=upcoming\|past\|all`        | List bookings                             |
 | POST   | `/api/bookings/{id}/cancel`                      | Cancel a booking                          |
+| POST   | `/api/bookings/{id}/reschedule`                  | Reschedule a confirmed booking            |
 | GET    | `/api/public/event-types/{slug}`                 | Public event metadata                     |
 | GET    | `/api/public/event-types/{slug}/slots?date=...`  | Available slots for a date                |
-| POST   | `/api/public/event-types/{slug}/book`            | Create a booking                          |
+| POST   | `/api/public/otp/request`                        | Email a 6-digit verification code         |
+| POST   | `/api/public/otp/verify`                         | Verify code, receive verification token   |
+| POST   | `/api/public/event-types/{slug}/book`            | Create a booking (requires verification token) |
 | GET    | `/api/public/bookings/{id}`                      | Public booking details (confirmation)     |
 
 Interactive docs at `http://<host>/docs`.
@@ -132,5 +167,6 @@ Interactive docs at `http://<host>/docs`.
 - One global weekly availability schedule applies to all event types.
 - Deleting an event type cascades to its bookings.
 - On Postgres, a partial unique index on `(event_type_id, start_time) WHERE status='confirmed'` prevents double-booking at the DB level. On SQLite (local dev), this degrades to a regular index — production should use Postgres.
-- Schema is created via `Base.metadata.create_all()` on startup. For future schema changes, migrate to Alembic.
-- Email notifications and rescheduling are out of scope for this version.
+- Schema is created via `Base.metadata.create_all()` on startup, plus a small idempotent column patcher in `main.py` for additive changes (e.g. `bookings.meeting_url`). For future structural changes, migrate to Alembic.
+- Every booking requires a fresh email OTP — the booker requests a code, verifies it, and the resulting short-lived bearer token is consumed by `/book`. Tokens are stored server-side (no JWT dependency) and burned on use.
+- Booking lifecycle emails (confirmed / rescheduled / cancelled) are sent via `BackgroundTasks` so they never block the API response. Failures are logged with retries.

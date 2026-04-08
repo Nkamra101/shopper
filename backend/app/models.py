@@ -54,6 +54,37 @@ class BlockoutDate(Base):
 
 
 
+class EmailOtp(Base):
+    """One-time codes mailed to a user before they're allowed to book."""
+
+    __tablename__ = "email_otps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    used: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+
+
+class VerificationToken(Base):
+    """Short-lived bearer token issued after successful OTP verification.
+
+    The token is presented to /book to prove the booker controls the email
+    they are booking with.
+    """
+
+    __tablename__ = "verification_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    email: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class Booking(Base):
     __tablename__ = "bookings"
 
@@ -65,7 +96,9 @@ class Booking(Base):
     booker_email: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="confirmed", index=True)
-    meeting_url: Mapped[str] = mapped_column(String(255), default="")
+    meeting_url: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default="", default=""
+    )
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

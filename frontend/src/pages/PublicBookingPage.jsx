@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../services/api";
 import { formatDate, getUpcomingDates, toDateInputValue } from "../utils/date";
@@ -34,8 +34,23 @@ export default function PublicBookingPage() {
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
+  // ----- OTP state -----
+  // stage: "idle" → user can type email; "sent" → email locked, code field shown;
+  // "verified" → verification_token in hand, ready to confirm booking.
+  const [otpStage, setOtpStage] = useState("idle");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [verificationToken, setVerificationToken] = useState("");
+  const [verifiedEmail, setVerifiedEmail] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const resendTimer = useRef(null);
+
   const errors = useMemo(() => validate(form), [form]);
-  const isValid = Object.keys(errors).length === 0 && !!selectedSlot;
+  const emailValid = !errors.booker_email && form.booker_email.trim().length > 0;
+  const isVerified = otpStage === "verified" && verifiedEmail === form.booker_email.trim().toLowerCase();
+  const isValid =
+    Object.keys(errors).length === 0 && !!selectedSlot && isVerified;
 
   useEffect(() => {
     async function loadEvent() {
@@ -71,6 +86,78 @@ export default function PublicBookingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, selectedDate]);
 
+  // Resend countdown ticker.
+  useEffect(() => {
+    if (resendIn <= 0) {
+      if (resendTimer.current) {
+        clearInterval(resendTimer.current);
+        resendTimer.current = null;
+      }
+      return;
+    }
+    if (!resendTimer.current) {
+      resendTimer.current = setInterval(() => {
+        setResendIn((prev) => (prev <= 1 ? 0 : prev - 1));
+      }, 1000);
+    }
+    return () => {
+      if (resendTimer.current) {
+        clearInterval(resendTimer.current);
+        resendTimer.current = null;
+      }
+    };
+  }, [resendIn]);
+
+  function resetVerification() {
+    setOtpStage("idle");
+    setOtpCode("");
+    setVerificationToken("");
+    setVerifiedEmail("");
+    setResendIn(0);
+  }
+
+  function handleEmailChange(value) {
+    setForm({ ...form, booker_email: value });
+    // Any edit invalidates a previously sent / verified code.
+    if (otpStage !== "idle") {
+      resetVerification();
+    }
+  }
+
+  async function handleSendCode() {
+    if (!emailValid) {
+      setTouched((t) => ({ ...t, booker_email: true }));
+      return;
+    }
+    setOtpSending(true);
+    try {
+      const data = await api.requestOtp(form.booker_email.trim());
+      setOtpStage("sent");
+      setResendIn(data.resend_after_seconds || 60);
+      toast.success("Verification code sent. Check your inbox.");
+    } catch (error) {
+      toast.error(error.message || "Could not send code.");
+    } finally {
+      setOtpSending(false);
+    }
+  }
+
+  async function handleVerifyCode() {
+    if (!otpCode.trim()) return;
+    setOtpVerifying(true);
+    try {
+      const data = await api.verifyOtp(form.booker_email.trim(), otpCode.trim());
+      setVerificationToken(data.verification_token);
+      setVerifiedEmail(form.booker_email.trim().toLowerCase());
+      setOtpStage("verified");
+      toast.success("Email verified.");
+    } catch (error) {
+      toast.error(error.message || "Invalid code.");
+    } finally {
+      setOtpVerifying(false);
+    }
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setTouched({ booker_name: true, booker_email: true });
@@ -79,13 +166,25 @@ export default function PublicBookingPage() {
       return;
     }
     if (Object.keys(errors).length > 0) return;
+    if (!isVerified) {
+      toast.error("Please verify your email before booking.");
+      return;
+    }
 
     setSubmitting(true);
     try {
-      const booking = await api.createBooking(slug, { ...form, start_time: selectedSlot });
+      const booking = await api.createBooking(slug, {
+        ...form,
+        start_time: selectedSlot,
+        verification_token: verificationToken,
+      });
       navigate(`/book/${slug}/confirmed/${booking.id}`);
     } catch (error) {
       toast.error(error.message || "Could not confirm booking.");
+      // If the server says the token expired, force re-verification.
+      if (error.message && /verif/i.test(error.message)) {
+        resetVerification();
+      }
     } finally {
       setSubmitting(false);
     }
@@ -94,6 +193,8 @@ export default function PublicBookingPage() {
   function showError(field) {
     return touched[field] && errors[field];
   }
+
+  const emailLocked = otpStage !== "idle";
 
   return (
     <div className="public-page">
@@ -175,7 +276,7 @@ export default function PublicBookingPage() {
           </div>
 
           <form className="form-grid" onSubmit={handleSubmit} noValidate>
-            <label>
+            <label className="full-width">
               Your name
               <input
                 value={form.booker_name}
@@ -188,20 +289,85 @@ export default function PublicBookingPage() {
                 <p className="field-error">{errors.booker_name}</p>
               ) : null}
             </label>
-            <label>
+            <label className="full-width">
               Email
-              <input
-                type="email"
-                value={form.booker_email}
-                onChange={(e) => setForm({ ...form, booker_email: e.target.value })}
-                onBlur={() => setTouched((t) => ({ ...t, booker_email: true }))}
-                aria-invalid={showError("booker_email") ? "true" : "false"}
-                required
-              />
+              <div className="otp-email-row">
+                <input
+                  type="email"
+                  value={form.booker_email}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, booker_email: true }))}
+                  aria-invalid={showError("booker_email") ? "true" : "false"}
+                  disabled={emailLocked}
+                  required
+                />
+                {otpStage === "idle" ? (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleSendCode}
+                    disabled={!emailValid || otpSending}
+                  >
+                    {otpSending ? "Sending..." : "Send code"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={resetVerification}
+                  >
+                    Change
+                  </button>
+                )}
+              </div>
               {showError("booker_email") ? (
                 <p className="field-error">{errors.booker_email}</p>
               ) : null}
+              {otpStage === "verified" ? (
+                <p className="otp-success">Email verified.</p>
+              ) : null}
             </label>
+
+            {otpStage === "sent" ? (
+              <label className="full-width">
+                Verification code
+                <div className="otp-code-row">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="Enter 6-digit code"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                    className="otp-code-input"
+                  />
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={handleVerifyCode}
+                    disabled={otpCode.length < 4 || otpVerifying}
+                  >
+                    {otpVerifying ? "Verifying..." : "Verify"}
+                  </button>
+                </div>
+                <div className="otp-resend">
+                  {resendIn > 0 ? (
+                    <span>Resend available in {resendIn}s</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={handleSendCode}
+                      disabled={otpSending}
+                    >
+                      {otpSending ? "Sending..." : "Resend code"}
+                    </button>
+                  )}
+                </div>
+              </label>
+            ) : null}
+
             <label className="full-width">
               Notes
               <textarea
@@ -216,7 +382,11 @@ export default function PublicBookingPage() {
               className="primary-button full-width"
               disabled={!isValid || submitting}
             >
-              {submitting ? "Confirming..." : "Confirm booking"}
+              {submitting
+                ? "Confirming..."
+                : !isVerified
+                ? "Verify email to continue"
+                : "Confirm booking"}
             </button>
           </form>
         </div>

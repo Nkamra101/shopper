@@ -15,6 +15,7 @@ from ..services.booking_service import (
     normalize_booking_start,
 )
 from ..services.email_service import send_email_background
+from ..services.otp_service import consume_verification_token
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -60,6 +61,14 @@ def create_booking(slug: str, payload: BookingCreate, background_tasks: Backgrou
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
 
+    # Verify the booker controls this email by burning the verification token
+    # they obtained via the OTP flow. This must happen before any DB writes.
+    if not consume_verification_token(db, payload.verification_token, payload.booker_email):
+        raise HTTPException(
+            status_code=401,
+            detail="Email verification expired or invalid. Please verify your email again.",
+        )
+
     # Convert the requested start into naive UTC so it can be compared and
     # stored consistently with generate_slots().
     start_utc = normalize_booking_start(payload.start_time, timezone_name)
@@ -83,7 +92,7 @@ def create_booking(slug: str, payload: BookingCreate, background_tasks: Backgrou
         booker_email=payload.booker_email,
         notes=payload.notes,
         status="confirmed",
-        meeting_url=f"https://meet.google.com/{uuid.uuid4().hex[:3]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:3]}",
+        meeting_url=f"https://meet.jit.si/shopper-{uuid.uuid4().hex[:12]}",
         start_time=start_utc,
         end_time=start_utc + timedelta(minutes=event_type.duration),
     )

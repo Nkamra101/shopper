@@ -66,11 +66,25 @@ class Settings:
     SMTP_USER: str = os.getenv("SMTP_USER", "")
     SMTP_PASS: str = os.getenv("SMTP_PASS", "")
     SMTP_FROM: str = os.getenv("SMTP_FROM", "")
-    SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "5"))
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "Shopper Scheduler")
+    SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
+    SMTP_RETRY_COUNT: int = int(os.getenv("SMTP_RETRY_COUNT", "1"))
+
+    # ----- OTP -----
+    OTP_TTL_SECONDS: int = int(os.getenv("OTP_TTL_SECONDS", "600"))  # 10 minutes
+    OTP_RATE_LIMIT_SECONDS: int = int(os.getenv("OTP_RATE_LIMIT_SECONDS", "60"))
+    OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+    VERIFICATION_TOKEN_TTL_SECONDS: int = int(
+        os.getenv("VERIFICATION_TOKEN_TTL_SECONDS", "900")
+    )  # 15 minutes
 
     @property
     def is_production(self) -> bool:
         return self.APP_ENV.lower() == "production"
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASS)
 
 
 settings = Settings()

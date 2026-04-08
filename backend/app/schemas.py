@@ -55,7 +55,7 @@ class BookingRead(BaseModel):
     booker_email: str
     notes: str
     status: str
-    meeting_url: str
+    meeting_url: str = ""
     start_time: datetime
     end_time: datetime
     created_at: datetime
@@ -85,6 +85,27 @@ class BookingCreate(BaseModel):
     booker_email: EmailStr
     notes: str = Field(default="", max_length=500)
     start_time: datetime
+    verification_token: str = Field(..., min_length=16, max_length=64)
+
+
+class OtpRequest(BaseModel):
+    email: EmailStr
+
+
+class OtpRequestResponse(BaseModel):
+    sent: bool
+    expires_in_seconds: int
+    resend_after_seconds: int
+
+
+class OtpVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=10)
+
+
+class OtpVerifyResponse(BaseModel):
+    verification_token: str
+    expires_in_seconds: int
 
 
 class BookingReschedule(BaseModel):
