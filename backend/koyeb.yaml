@@ -1,0 +1,59 @@
+name: shopper-backend
+services:
+  - name: api
+    type: web
+    git:
+      branch: main
+      build_command: pip install -r requirements.txt
+      run_command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+      workdir: backend
+    instance_type: free
+    regions:
+      - fra
+    ports:
+      - port: 8000
+        protocol: http
+    routes:
+      - path: /
+        port: 8000
+    health_checks:
+      - http:
+          port: 8000
+          path: /health
+    env:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SEED_ON_STARTUP
+        value: "false"
+      - key: DEFAULT_TIMEZONE
+        value: Asia/Kolkata
+      - key: DATABASE_URL
+        secret: database-url
+      - key: CORS_ORIGINS
+        secret: cors-origins
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        secret: smtp-user
+      - key: SMTP_PASS
+        secret: smtp-pass
+      - key: SMTP_FROM
+        secret: smtp-from
+      - key: SMTP_FROM_NAME
+        value: Shopper Scheduler
+      - key: SMTP_TIMEOUT_SECONDS
+        value: "10"
+      - key: SMTP_RETRY_COUNT
+        value: "1"
+      - key: OTP_TTL_SECONDS
+        value: "600"
+      - key: OTP_RATE_LIMIT_SECONDS
+        value: "60"
+      - key: OTP_MAX_ATTEMPTS
+        value: "5"
+      - key: VERIFICATION_TOKEN_TTL_SECONDS
+        value: "900"

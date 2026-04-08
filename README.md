@@ -95,6 +95,38 @@ If `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` are missing the app boots fine but every 
 
 ## Deployment
 
+### Backend on Koyeb + Neon (recommended free stack)
+
+Both Koyeb (Eco plan) and Neon (free tier) require **no credit card** and keep the backend always-on. A `koyeb.yaml` is included at `backend/koyeb.yaml` for reference.
+
+**1. Create the Postgres database on Neon**
+
+1. Sign up at https://neon.tech (GitHub login)
+2. Create a project, pick a region close to you (e.g. `aws-ap-south-1`)
+3. Copy the connection string — it looks like `postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require`
+4. Save it for the next step. The app's `database.py` automatically normalises legacy `postgres://` URLs and uses `pool_pre_ping=True`, so it handles Neon's idle-sleep reconnects cleanly.
+
+**2. Deploy the backend on Koyeb**
+
+1. Sign up at https://koyeb.com (GitHub login)
+2. **Create Service → GitHub** → select this repo
+3. Configure:
+   - **Work directory:** `backend`
+   - **Build command:** `pip install -r requirements.txt`
+   - **Run command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Instance type:** Free (Eco)
+   - **Port:** `8000` HTTP
+   - **Health check:** HTTP `/health` on port `8000`
+4. **Environment variables:**
+   - `APP_ENV=production`
+   - `DEBUG=false`
+   - `DATABASE_URL=<Neon connection string>` (mark as Secret)
+   - `CORS_ORIGINS=https://<your-frontend-domain>` (comma-separated for multiple)
+   - `SEED_ON_STARTUP=false`
+   - `DEFAULT_TIMEZONE=Asia/Kolkata`
+   - SMTP vars (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, …) — see the SMTP section above
+5. Deploy. Once live, test `https://<service>.koyeb.app/health` and `https://<service>.koyeb.app/docs`.
+
 ### Backend on Render
 
 A `render.yaml` is included at `backend/render.yaml` for infrastructure-as-code deployments. Or set it up via the dashboard:
