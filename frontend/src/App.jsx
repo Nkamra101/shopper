@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import DashboardPage from "./pages/DashboardPage";
 import AvailabilityPage from "./pages/AvailabilityPage";
@@ -5,6 +6,7 @@ import BookingsPage from "./pages/BookingsPage";
 import PublicBookingPage from "./pages/PublicBookingPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
 import ThemeToggle from "./components/ThemeToggle";
+import { useToast } from "./components/Toast";
 
 const navItems = [
   { to: "/", label: "Event Types", end: true },
@@ -62,6 +64,36 @@ function AdminLayout({ children, title, subtitle }) {
 }
 
 export default function App() {
+  const toast = useToast();
+  const slowToastIdRef = useRef(null);
+
+  useEffect(() => {
+    function handleSlow() {
+      if (!slowToastIdRef.current) {
+        slowToastIdRef.current = toast.info(
+          "Waking up the server, this might take up to a minute...",
+          { duration: 60000 }
+        );
+      }
+    }
+
+    function handleFast() {
+      if (slowToastIdRef.current) {
+        toast.dismiss(slowToastIdRef.current);
+        slowToastIdRef.current = null;
+        toast.success("Server is awake and ready!");
+      }
+    }
+
+    window.addEventListener("api-slow", handleSlow);
+    window.addEventListener("api-fast", handleFast);
+
+    return () => {
+      window.removeEventListener("api-slow", handleSlow);
+      window.removeEventListener("api-fast", handleFast);
+    };
+  }, [toast]);
+
   return (
     <Routes>
       <Route

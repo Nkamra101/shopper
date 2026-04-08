@@ -60,8 +60,9 @@ export function ToastProvider({ children }) {
       success: (message, options) => push("success", message, options),
       error: (message, options) => push("error", message, options),
       info: (message, options) => push("info", message, options),
+      dismiss,
     }),
-    [push]
+    [push, dismiss]
   );
 
   return (
