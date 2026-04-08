@@ -38,3 +38,17 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: SMTP_FROM_NAME
+        value: Shopper Scheduler
+      - key: SMTP_TIMEOUT_SECONDS
+        value: "10"
+      - key: SMTP_RETRY_COUNT
+        value: "1"
+      - key: OTP_TTL_SECONDS
+        value: "600"
+      - key: OTP_RATE_LIMIT_SECONDS
+        value: "60"
+      - key: OTP_MAX_ATTEMPTS
+        value: "5"
+      - key: VERIFICATION_TOKEN_TTL_SECONDS
+        value: "900"
