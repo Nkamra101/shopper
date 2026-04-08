@@ -43,4 +43,8 @@ export const api = {
   createBlockout: (payload) => request("/api/blockouts", { method: "POST", body: JSON.stringify(payload) }),
   deleteBlockout: (date) => request(`/api/blockouts/${date}`, { method: "DELETE" }),
   rescheduleBooking: (id, payload) => request(`/api/bookings/${id}/reschedule`, { method: "POST", body: JSON.stringify(payload) }),
+  requestOtp: (email) =>
+    request(`/api/public/otp/request`, { method: "POST", body: JSON.stringify({ email }) }),
+  verifyOtp: (email, code) =>
+    request(`/api/public/otp/verify`, { method: "POST", body: JSON.stringify({ email, code }) }),
 };
