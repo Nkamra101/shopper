@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import ssl
 import time
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -128,18 +129,24 @@ def _build_message(
 
 def _deliver(msg: EmailMessage) -> None:
     """Single SMTP delivery attempt. Raises on failure."""
+    context = ssl.create_default_context()
     if settings.SMTP_PORT == 465:
         with smtplib.SMTP_SSL(
-            settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT_SECONDS
+            settings.SMTP_HOST,
+            settings.SMTP_PORT,
+            context=context,
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
         ) as server:
             server.login(settings.SMTP_USER, settings.SMTP_PASS)
             server.send_message(msg)
     else:
         with smtplib.SMTP(
-            settings.SMTP_HOST, settings.SMTP_PORT, timeout=settings.SMTP_TIMEOUT_SECONDS
+            settings.SMTP_HOST,
+            settings.SMTP_PORT,
+            timeout=settings.SMTP_TIMEOUT_SECONDS,
         ) as server:
             server.ehlo()
-            server.starttls()
+            server.starttls(context=context)
             server.ehlo()
             server.login(settings.SMTP_USER, settings.SMTP_PASS)
             server.send_message(msg)

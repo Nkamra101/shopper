@@ -82,6 +82,11 @@ Configure SMTP via these env vars (Gmail with an App Password is the recommended
 
 **Gmail setup:** turn on 2-Step Verification on the Google account, generate an App Password (Google Account → Security → App passwords), and use that 16-character value as `SMTP_PASS`. Regular account passwords will not work.
 
+<<<<<<< HEAD
+=======
+On Render, make sure `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM` are configured as service environment secrets for your web service. If those values are missing, email delivery will be disabled and OTP requests will return 503.
+
+>>>>>>> c70649d4c84301ce466cb0e5b6546ed0fee3bf00
 If `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` are missing the app boots fine but every email send is logged and skipped — and the OTP `/request` endpoint returns 503, so booking is effectively disabled until SMTP is configured.
 
 ### OTP / verification token tuning

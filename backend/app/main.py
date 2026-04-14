@@ -80,6 +80,14 @@ async def lifespan(_: FastAPI):
         finally:
             db.close()
 
+    if settings.smtp_configured:
+        logger.info("SMTP email configured for %s at %s", settings.SMTP_USER, settings.SMTP_HOST)
+    else:
+        logger.warning(
+            "SMTP is not configured. Email delivery will be disabled."
+            " Set SMTP_HOST, SMTP_USER and SMTP_PASS in your Render service environment."
+        )
+
     yield
     logger.info("Shutting down %s", settings.APP_NAME)
 
