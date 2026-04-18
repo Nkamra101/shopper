@@ -1,21 +1,4 @@
-"""OTP issuance and verification.
-
-Flow:
-
-1. ``request_otp`` — generates a 6-digit code, stores its sha256 hash with an
-   expiry, mails it to the user. Rate-limited per email so we don't blast
-   inboxes (or burn through Gmail's daily quota).
-2. ``verify_otp`` — checks the latest unused code for the email, marks it
-   used on success, and issues a short-lived bearer token (random 32-byte
-   hex string) tied to that email.
-3. ``consume_verification_token`` — invoked by /book. Checks the token is
-   live for the supplied email and marks it consumed so it can't be reused.
-
-We use sha256 (not bcrypt) because the codes are 6 digits and live for ~10
-minutes — the value of slowing down a brute force is dwarfed by the
-``OTP_MAX_ATTEMPTS`` rate limit. Tokens themselves are stored verbatim
-because they're already 256 bits of entropy.
-"""
+"""OTP issuance and verification — MongoDB backend."""
 
 from __future__ import annotations
 
@@ -26,11 +9,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from pymongo.database import Database
 
 from ..config import settings
-from ..models import EmailOtp, VerificationToken
 from .email_service import send_otp_email
 
 logger = logging.getLogger(__name__)
@@ -41,11 +22,10 @@ def _utcnow() -> datetime:
 
 
 def _hash_code(code: str) -> str:
-    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+    return hashlib.sha256(code.encode()).hexdigest()
 
 
 def _generate_code() -> str:
-    # secrets.randbelow gives a uniform 0..999999 — zero-pad to keep length 6.
     return f"{secrets.randbelow(1_000_000):06d}"
 
 
@@ -69,21 +49,17 @@ class OtpVerifyResult:
     error: Optional[str] = None
 
 
-def request_otp(db: Session, email: str) -> OtpRequestResult:
+def request_otp(db: Database, email: str) -> OtpRequestResult:
     email = _normalize_email(email)
     now = _utcnow()
 
-    # Rate limit: refuse if a code was issued for this email in the last
-    # OTP_RATE_LIMIT_SECONDS window.
     rate_window_start = now - timedelta(seconds=settings.OTP_RATE_LIMIT_SECONDS)
-    recent = db.scalar(
-        select(EmailOtp)
-        .where(EmailOtp.email == email)
-        .where(EmailOtp.created_at >= rate_window_start)
-        .order_by(EmailOtp.created_at.desc())
+    recent = db.email_otps.find_one(
+        {"email": email, "created_at": {"$gte": rate_window_start}},
+        sort=[("created_at", -1)],
     )
     if recent is not None:
-        wait = settings.OTP_RATE_LIMIT_SECONDS - int((now - recent.created_at).total_seconds())
+        wait = settings.OTP_RATE_LIMIT_SECONDS - int((now - recent["created_at"]).total_seconds())
         return OtpRequestResult(
             sent=False,
             expires_in_seconds=settings.OTP_TTL_SECONDS,
@@ -94,23 +70,20 @@ def request_otp(db: Session, email: str) -> OtpRequestResult:
     code = _generate_code()
     expires_at = now + timedelta(seconds=settings.OTP_TTL_SECONDS)
 
-    otp = EmailOtp(
-        email=email,
-        code_hash=_hash_code(code),
-        expires_at=expires_at,
-        attempts=0,
-        used=False,
-    )
-    db.add(otp)
-    db.commit()
+    otp_doc = {
+        "email": email,
+        "code_hash": _hash_code(code),
+        "expires_at": expires_at,
+        "attempts": 0,
+        "used": False,
+        "created_at": now,
+    }
+    result = db.email_otps.insert_one(otp_doc)
+    otp_id = result.inserted_id
 
-    delivered = send_otp_email(
-        recipient=email, code=code, ttl_seconds=settings.OTP_TTL_SECONDS
-    )
+    delivered = send_otp_email(recipient=email, code=code, ttl_seconds=settings.OTP_TTL_SECONDS)
     if not delivered:
-        # Mark used so we don't leave a phantom valid code in the DB.
-        otp.used = True
-        db.commit()
+        db.email_otps.update_one({"_id": otp_id}, {"$set": {"used": True}})
         return OtpRequestResult(
             sent=False,
             expires_in_seconds=settings.OTP_TTL_SECONDS,
@@ -125,52 +98,47 @@ def request_otp(db: Session, email: str) -> OtpRequestResult:
     )
 
 
-def verify_otp(db: Session, email: str, code: str) -> OtpVerifyResult:
+def verify_otp(db: Database, email: str, code: str) -> OtpVerifyResult:
     email = _normalize_email(email)
     code = code.strip()
     now = _utcnow()
 
-    otp = db.scalar(
-        select(EmailOtp)
-        .where(EmailOtp.email == email)
-        .where(EmailOtp.used.is_(False))
-        .order_by(EmailOtp.created_at.desc())
+    otp = db.email_otps.find_one(
+        {"email": email, "used": False},
+        sort=[("created_at", -1)],
     )
     if otp is None:
         return OtpVerifyResult(ok=False, error="No active code. Please request a new one.")
 
-    if otp.expires_at <= now:
-        otp.used = True
-        db.commit()
+    if otp["expires_at"] <= now:
+        db.email_otps.update_one({"_id": otp["_id"]}, {"$set": {"used": True}})
         return OtpVerifyResult(ok=False, error="Code expired. Please request a new one.")
 
-    if otp.attempts >= settings.OTP_MAX_ATTEMPTS:
-        otp.used = True
-        db.commit()
+    if otp["attempts"] >= settings.OTP_MAX_ATTEMPTS:
+        db.email_otps.update_one({"_id": otp["_id"]}, {"$set": {"used": True}})
         return OtpVerifyResult(ok=False, error="Too many attempts. Please request a new code.")
 
-    otp.attempts += 1
+    new_attempts = otp["attempts"] + 1
+    db.email_otps.update_one({"_id": otp["_id"]}, {"$set": {"attempts": new_attempts}})
 
-    if otp.code_hash != _hash_code(code):
-        db.commit()
-        remaining = settings.OTP_MAX_ATTEMPTS - otp.attempts
+    if otp["code_hash"] != _hash_code(code):
+        remaining = settings.OTP_MAX_ATTEMPTS - new_attempts
         if remaining <= 0:
-            otp.used = True
-            db.commit()
+            db.email_otps.update_one({"_id": otp["_id"]}, {"$set": {"used": True}})
             return OtpVerifyResult(ok=False, error="Too many attempts. Please request a new code.")
         return OtpVerifyResult(ok=False, error=f"Incorrect code. {remaining} attempt(s) left.")
 
-    # Success — burn the OTP and mint a verification token.
-    otp.used = True
+    # Success — burn OTP and mint verification token
+    db.email_otps.update_one({"_id": otp["_id"]}, {"$set": {"used": True}})
 
-    token_value = secrets.token_hex(32)  # 64 chars
-    token = VerificationToken(
-        token=token_value,
-        email=email,
-        expires_at=now + timedelta(seconds=settings.VERIFICATION_TOKEN_TTL_SECONDS),
-    )
-    db.add(token)
-    db.commit()
+    token_value = secrets.token_hex(32)
+    db.verification_tokens.insert_one({
+        "token": token_value,
+        "email": email,
+        "expires_at": now + timedelta(seconds=settings.VERIFICATION_TOKEN_TTL_SECONDS),
+        "consumed_at": None,
+        "created_at": now,
+    })
 
     return OtpVerifyResult(
         ok=True,
@@ -179,23 +147,21 @@ def verify_otp(db: Session, email: str, code: str) -> OtpVerifyResult:
     )
 
 
-def consume_verification_token(db: Session, token_value: str, email: str) -> bool:
-    """Validate and burn a verification token. Returns True if it was valid."""
+def consume_verification_token(db: Database, token_value: str, email: str) -> bool:
     email = _normalize_email(email)
     now = _utcnow()
 
-    token = db.scalar(
-        select(VerificationToken).where(VerificationToken.token == token_value)
-    )
+    token = db.verification_tokens.find_one({"token": token_value})
     if token is None:
         return False
-    if token.consumed_at is not None:
+    if token.get("consumed_at") is not None:
         return False
-    if token.email != email:
+    if token["email"] != email:
         return False
-    if token.expires_at <= now:
+    if token["expires_at"] <= now:
         return False
 
-    token.consumed_at = now
-    db.commit()
+    db.verification_tokens.update_one(
+        {"_id": token["_id"]}, {"$set": {"consumed_at": now}}
+    )
     return True

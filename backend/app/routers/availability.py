@@ -1,42 +1,60 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from datetime import time
 
-from ..database import get_db
-from ..models import AvailabilityRule, AvailabilitySetting
+from fastapi import APIRouter, Depends
+from pymongo.database import Database
+
+from ..database import get_db, _doc
 from ..schemas import AvailabilityRead, AvailabilityRuleRead, AvailabilityUpdate
 
 router = APIRouter(prefix="/api", tags=["availability"])
 
 
-@router.get("/availability", response_model=AvailabilityRead)
-def get_availability(db: Session = Depends(get_db)):
-    setting = db.get(AvailabilitySetting, 1)
-    if not setting:
-        setting = AvailabilitySetting(id=1, timezone="Asia/Kolkata")
-        db.add(setting)
-        db.commit()
-        db.refresh(setting)
+def _rule_doc(doc: dict) -> dict:
+    d = _doc(doc)
+    # Convert stored "HH:MM:SS" strings back to time objects for Pydantic
+    for field in ("start_time", "end_time"):
+        val = d.get(field)
+        if isinstance(val, str):
+            d[field] = time.fromisoformat(val)
+    return d
 
-    rules = db.scalars(select(AvailabilityRule).order_by(AvailabilityRule.day_of_week.asc())).all()
-    return AvailabilityRead(timezone=setting.timezone, rules=[AvailabilityRuleRead.model_validate(rule) for rule in rules])
+
+@router.get("/availability", response_model=AvailabilityRead)
+def get_availability(db: Database = Depends(get_db)):
+    setting = db.availability_settings.find_one({})
+    if not setting:
+        db.availability_settings.insert_one({"timezone": "Asia/Kolkata"})
+        setting = db.availability_settings.find_one({})
+
+    rules = list(db.availability_rules.find({}, sort=[("day_of_week", 1)]))
+    return AvailabilityRead(
+        timezone=setting["timezone"],
+        rules=[AvailabilityRuleRead(**_rule_doc(r)) for r in rules],
+    )
 
 
 @router.put("/availability", response_model=AvailabilityRead)
-def update_availability(payload: AvailabilityUpdate, db: Session = Depends(get_db)):
-    setting = db.get(AvailabilitySetting, 1)
-    if not setting:
-        setting = AvailabilitySetting(id=1, timezone=payload.timezone)
-        db.add(setting)
-    else:
-        setting.timezone = payload.timezone
+def update_availability(payload: AvailabilityUpdate, db: Database = Depends(get_db)):
+    db.availability_settings.update_one(
+        {},
+        {"$set": {"timezone": payload.timezone}},
+        upsert=True,
+    )
 
-    db.execute(delete(AvailabilityRule))
-    for rule in payload.rules:
-        db.add(AvailabilityRule(**rule.model_dump()))
+    db.availability_rules.delete_many({})
+    if payload.rules:
+        db.availability_rules.insert_many([
+            {
+                "day_of_week": r.day_of_week,
+                "start_time": r.start_time.strftime("%H:%M:%S"),
+                "end_time": r.end_time.strftime("%H:%M:%S"),
+                "is_active": r.is_active,
+            }
+            for r in payload.rules
+        ])
 
-    db.commit()
-
-    rules = db.scalars(select(AvailabilityRule).order_by(AvailabilityRule.day_of_week.asc())).all()
-    return AvailabilityRead(timezone=setting.timezone, rules=[AvailabilityRuleRead.model_validate(rule) for rule in rules])
-
+    rules = list(db.availability_rules.find({}, sort=[("day_of_week", 1)]))
+    return AvailabilityRead(
+        timezone=payload.timezone,
+        rules=[AvailabilityRuleRead(**_rule_doc(r)) for r in rules],
+    )

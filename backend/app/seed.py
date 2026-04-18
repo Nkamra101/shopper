@@ -1,80 +1,96 @@
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from pymongo.database import Database
 
 from .config import settings
-from .models import AvailabilityRule, AvailabilitySetting, Booking, EventType
 
 
 def _to_naive_utc(dt_aware: datetime) -> datetime:
     return dt_aware.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def seed_database(db: Session) -> None:
-    existing_event = db.scalar(select(EventType).limit(1))
-    if existing_event:
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def seed_database(db: Database) -> None:
+    if db.event_types.count_documents({}) > 0:
         return
 
-    db.add(AvailabilitySetting(id=1, timezone=settings.DEFAULT_TIMEZONE))
+    # Availability settings
+    if db.availability_settings.count_documents({}) == 0:
+        db.availability_settings.insert_one({"timezone": settings.DEFAULT_TIMEZONE})
 
-    rules = [
-        AvailabilityRule(day_of_week=0, start_time=time(10, 0), end_time=time(17, 0), is_active=True),
-        AvailabilityRule(day_of_week=1, start_time=time(10, 0), end_time=time(17, 0), is_active=True),
-        AvailabilityRule(day_of_week=2, start_time=time(10, 0), end_time=time(17, 0), is_active=True),
-        AvailabilityRule(day_of_week=3, start_time=time(10, 0), end_time=time(17, 0), is_active=True),
-        AvailabilityRule(day_of_week=4, start_time=time(10, 0), end_time=time(15, 0), is_active=True),
+    # Availability rules (Mon–Fri)
+    day_rules = [
+        {"day_of_week": d, "start_time": "10:00:00", "end_time": "17:00:00", "is_active": True}
+        for d in range(5)
     ]
-    db.add_all(rules)
+    day_rules[4]["end_time"] = "15:00:00"  # Friday ends at 15:00
+    db.availability_rules.insert_many(day_rules)
 
-    events = [
-        EventType(
-            title="Product Discovery Call",
-            description="A short intro call to understand project needs and shopping goals.",
-            duration=30,
-            url_slug="product-discovery",
-            accent_color="#0f172a",
-        ),
-        EventType(
-            title="Frontend Review Session",
-            description="Discuss UI improvements, components, and responsive fixes.",
-            duration=45,
-            url_slug="frontend-review",
-            accent_color="#14532d",
-        ),
+    # Event types
+    now = _utcnow()
+    event_docs = [
+        {
+            "title": "Product Discovery Call",
+            "description": "A short intro call to understand project needs and goals.",
+            "duration": 30,
+            "url_slug": "product-discovery",
+            "accent_color": "#6366f1",
+            "is_active": True,
+            "buffer_minutes": 0,
+            "min_notice_hours": 0,
+            "max_advance_days": 60,
+            "location": "",
+            "location_type": "video",
+            "created_at": now,
+        },
+        {
+            "title": "Frontend Review Session",
+            "description": "Discuss UI improvements, components, and responsive fixes.",
+            "duration": 45,
+            "url_slug": "frontend-review",
+            "accent_color": "#8b5cf6",
+            "is_active": True,
+            "buffer_minutes": 5,
+            "min_notice_hours": 1,
+            "max_advance_days": 30,
+            "location": "",
+            "location_type": "video",
+            "created_at": now,
+        },
     ]
-    db.add_all(events)
-    db.flush()
+    result = db.event_types.insert_many(event_docs)
+    et_ids = result.inserted_ids
 
     tz = ZoneInfo(settings.DEFAULT_TIMEZONE)
     now_local = datetime.now(tz).replace(minute=0, second=0, microsecond=0)
-    upcoming_start_local = now_local + timedelta(days=1, hours=2)
-    past_start_local = now_local - timedelta(days=2)
+    upcoming_start = _to_naive_utc(now_local + timedelta(days=1, hours=2))
+    past_start = _to_naive_utc(now_local - timedelta(days=2))
 
-    upcoming_start = _to_naive_utc(upcoming_start_local)
-    past_start = _to_naive_utc(past_start_local)
-
-    db.add_all(
-        [
-            Booking(
-                event_type_id=events[0].id,
-                booker_name="Aarav Sharma",
-                booker_email="aarav@example.com",
-                notes="Looking for a beginner friendly shopping demo.",
-                start_time=upcoming_start,
-                end_time=upcoming_start + timedelta(minutes=events[0].duration),
-                status="confirmed",
-            ),
-            Booking(
-                event_type_id=events[1].id,
-                booker_name="Neha Verma",
-                booker_email="neha@example.com",
-                notes="Wanted feedback on a React product page.",
-                start_time=past_start,
-                end_time=past_start + timedelta(minutes=events[1].duration),
-                status="confirmed",
-            ),
-        ]
-    )
-    db.commit()
+    db.bookings.insert_many([
+        {
+            "event_type_id": str(et_ids[0]),
+            "booker_name": "Aarav Sharma",
+            "booker_email": "aarav@example.com",
+            "notes": "Looking for a beginner friendly demo.",
+            "status": "confirmed",
+            "meeting_url": "https://meet.jit.si/shopper-demo-1",
+            "start_time": upcoming_start,
+            "end_time": upcoming_start + timedelta(minutes=30),
+            "created_at": now,
+        },
+        {
+            "event_type_id": str(et_ids[1]),
+            "booker_name": "Neha Verma",
+            "booker_email": "neha@example.com",
+            "notes": "Wanted feedback on a React product page.",
+            "status": "confirmed",
+            "meeting_url": "https://meet.jit.si/shopper-demo-2",
+            "start_time": past_start,
+            "end_time": past_start + timedelta(minutes=45),
+            "created_at": now,
+        },
+    ])

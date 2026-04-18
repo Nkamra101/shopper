@@ -1,10 +1,3 @@
-"""Centralised runtime configuration, driven by environment variables.
-
-Everything the app needs to adapt per-environment lives here so that main.py,
-database.py, and the routers don't read os.getenv directly. This keeps
-deployment tweaks to a single file.
-"""
-
 import os
 from pathlib import Path
 from typing import List
@@ -32,20 +25,15 @@ def _list_env(name: str, default: List[str] | None = None) -> List[str]:
 
 class Settings:
     # ----- App metadata -----
-    APP_NAME: str = os.getenv("APP_NAME", "Shopper Scheduling API")
-    APP_ENV: str = os.getenv("APP_ENV", "development")  # development | production
+    APP_NAME: str = os.getenv("APP_NAME", "Schedulr API")
+    APP_ENV: str = os.getenv("APP_ENV", "development")
     DEBUG: bool = _bool_env("DEBUG", default=False)
 
-    # ----- Database -----
-    # Default to a local SQLite DB so the app still boots with zero config.
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        f"sqlite:///{BASE_DIR / 'shopper.db'}",
-    )
+    # ----- MongoDB -----
+    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "schedulr")
 
     # ----- CORS -----
-    # Comma-separated list of allowed origins.
-    # In dev, include localhost defaults automatically if CORS_ORIGINS is unset.
     CORS_ORIGINS: List[str] = _list_env(
         "CORS_ORIGINS",
         default=[
@@ -61,23 +49,34 @@ class Settings:
     # ----- Defaults -----
     DEFAULT_TIMEZONE: str = os.getenv("DEFAULT_TIMEZONE", "Asia/Kolkata")
 
-    # ----- SMTP Settings -----
+    # ----- SMTP -----
     SMTP_HOST: str = os.getenv("SMTP_HOST", "")
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USER: str = os.getenv("SMTP_USER", "")
     SMTP_PASS: str = os.getenv("SMTP_PASS", "")
     SMTP_FROM: str = os.getenv("SMTP_FROM", "")
-    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "Shopper Scheduler")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "Schedulr")
     SMTP_TIMEOUT_SECONDS: int = int(os.getenv("SMTP_TIMEOUT_SECONDS", "10"))
     SMTP_RETRY_COUNT: int = int(os.getenv("SMTP_RETRY_COUNT", "1"))
 
+    # ----- Auth / JWT -----
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production-use-a-long-random-string")
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+
+    # ----- Google OAuth -----
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv(
+        "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"
+    )
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
     # ----- OTP -----
-    OTP_TTL_SECONDS: int = int(os.getenv("OTP_TTL_SECONDS", "600"))  # 10 minutes
+    OTP_TTL_SECONDS: int = int(os.getenv("OTP_TTL_SECONDS", "600"))
     OTP_RATE_LIMIT_SECONDS: int = int(os.getenv("OTP_RATE_LIMIT_SECONDS", "60"))
     OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
-    VERIFICATION_TOKEN_TTL_SECONDS: int = int(
-        os.getenv("VERIFICATION_TOKEN_TTL_SECONDS", "900")
-    )  # 15 minutes
+    VERIFICATION_TOKEN_TTL_SECONDS: int = int(os.getenv("VERIFICATION_TOKEN_TTL_SECONDS", "900"))
 
     @property
     def is_production(self) -> bool:

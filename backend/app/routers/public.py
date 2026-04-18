@@ -2,52 +2,58 @@ import uuid
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from pymongo.database import Database
 
-from ..database import get_db
-from ..models import Booking
+from ..database import get_db, _doc, _oid
 from ..schemas import BookingCreate, BookingRead, PublicEventTypeRead, SlotRead
-from ..services.booking_service import (
-    generate_slots,
-    get_public_event_type,
-    normalize_booking_start,
-)
+from ..services.booking_service import generate_slots, get_public_event_type, normalize_booking_start
 from ..services.email_service import send_email_background
 from ..services.otp_service import consume_verification_token
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 
+def _booking_with_event_type(booking: dict, db: Database) -> dict:
+    b = _doc(booking)
+    et = db.event_types.find_one({"_id": _oid(b["event_type_id"])})
+    if et:
+        b["event_type"] = _doc(et)
+        b["event_type"].setdefault("is_active", True)
+        b["event_type"].setdefault("buffer_minutes", 0)
+        b["event_type"].setdefault("min_notice_hours", 0)
+        b["event_type"].setdefault("max_advance_days", 60)
+        b["event_type"].setdefault("location", "")
+        b["event_type"].setdefault("location_type", "video")
+    b.setdefault("notes", "")
+    b.setdefault("meeting_url", "")
+    return b
+
+
 @router.get("/event-types/{slug}", response_model=PublicEventTypeRead)
-def get_public_event(slug: str, db: Session = Depends(get_db)):
+def get_public_event(slug: str, db: Database = Depends(get_db)):
     event_type, timezone_name = get_public_event_type(db, slug)
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
-
     return PublicEventTypeRead(
-        id=event_type.id,
-        title=event_type.title,
-        description=event_type.description,
-        duration=event_type.duration,
-        url_slug=event_type.url_slug,
-        accent_color=event_type.accent_color,
+        id=event_type["id"],
+        title=event_type["title"],
+        description=event_type.get("description", ""),
+        duration=event_type["duration"],
+        url_slug=event_type["url_slug"],
+        accent_color=event_type.get("accent_color", "#6366f1"),
         timezone=timezone_name,
     )
 
 
 @router.get("/event-types/{slug}/slots", response_model=list[SlotRead])
-def get_slots(slug: str, date: str = Query(...), db: Session = Depends(get_db)):
+def get_slots(slug: str, date: str = Query(...), db: Database = Depends(get_db)):
     event_type, _ = get_public_event_type(db, slug)
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
-
     try:
         requested_date = datetime.strptime(date, "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date. Use YYYY-MM-DD.")
-
     return generate_slots(db, event_type, requested_date)
 
 
@@ -56,25 +62,24 @@ def get_slots(slug: str, date: str = Query(...), db: Session = Depends(get_db)):
     response_model=BookingRead,
     status_code=status.HTTP_201_CREATED,
 )
-def create_booking(slug: str, payload: BookingCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def create_booking(
+    slug: str,
+    payload: BookingCreate,
+    background_tasks: BackgroundTasks,
+    db: Database = Depends(get_db),
+):
     event_type, timezone_name = get_public_event_type(db, slug)
     if not event_type:
         raise HTTPException(status_code=404, detail="Event type not found.")
 
-    # Verify the booker controls this email by burning the verification token
-    # they obtained via the OTP flow. This must happen before any DB writes.
     if not consume_verification_token(db, payload.verification_token, payload.booker_email):
         raise HTTPException(
             status_code=401,
             detail="Email verification expired or invalid. Please verify your email again.",
         )
 
-    # Convert the requested start into naive UTC so it can be compared and
-    # stored consistently with generate_slots().
     start_utc = normalize_booking_start(payload.start_time, timezone_name)
 
-    # Re-check availability in the same request. The partial unique index
-    # below provides the final race-condition guarantee.
     requested_date_local = payload.start_time.date()
     available_slots = generate_slots(db, event_type, requested_date_local)
     available_utc_keys = {
@@ -86,47 +91,55 @@ def create_booking(slug: str, payload: BookingCreate, background_tasks: Backgrou
     if start_utc.strftime("%Y-%m-%dT%H:%M:%S") not in available_utc_keys:
         raise HTTPException(status_code=400, detail="That slot is no longer available.")
 
-    booking = Booking(
-        event_type_id=event_type.id,
-        booker_name=payload.booker_name,
-        booker_email=payload.booker_email,
-        notes=payload.notes,
-        status="confirmed",
-        meeting_url=f"https://meet.jit.si/shopper-{uuid.uuid4().hex[:12]}",
-        start_time=start_utc,
-        end_time=start_utc + timedelta(minutes=event_type.duration),
-    )
-    db.add(booking)
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
+    # Check for slot conflict
+    if db.bookings.find_one({
+        "event_type_id": event_type["id"],
+        "start_time": start_utc,
+        "status": "confirmed",
+    }):
         raise HTTPException(
             status_code=409,
             detail="That slot was just booked by someone else. Please pick another.",
         )
 
-    created = db.scalar(
-        select(Booking).options(joinedload(Booking.event_type)).where(Booking.id == booking.id)
-    )
+    from datetime import timezone as tz_module
+    from datetime import datetime as dt_module
+    now = dt_module.now(tz_module.utc).replace(tzinfo=None)
+
+    booking_doc = {
+        "event_type_id": event_type["id"],
+        "booker_name": payload.booker_name,
+        "booker_email": payload.booker_email,
+        "notes": payload.notes,
+        "status": "confirmed",
+        "meeting_url": f"https://meet.jit.si/schedulr-{uuid.uuid4().hex[:12]}",
+        "start_time": start_utc,
+        "end_time": start_utc + timedelta(minutes=event_type["duration"]),
+        "created_at": now,
+    }
+    result = db.bookings.insert_one(booking_doc)
+    booking = db.bookings.find_one({"_id": result.inserted_id})
+    enriched = _booking_with_event_type(booking, db)
 
     background_tasks.add_task(
         send_email_background,
         action="booked",
-        recipient=created.booker_email,
-        event_title=created.event_type.title,
-        start_time=created.start_time.strftime("%A, %B %d, %Y at %I:%M %p"),
-        meeting_url=created.meeting_url
+        recipient=enriched["booker_email"],
+        event_title=enriched["event_type"]["title"],
+        start_time=booking["start_time"].strftime("%A, %B %d, %Y at %I:%M %p"),
+        meeting_url=booking.get("meeting_url"),
     )
-
-    return created
+    return enriched
 
 
 @router.get("/bookings/{booking_id}", response_model=BookingRead)
-def get_booking(booking_id: int, db: Session = Depends(get_db)):
-    booking = db.scalar(
-        select(Booking).options(joinedload(Booking.event_type)).where(Booking.id == booking_id)
-    )
+def get_booking(booking_id: str, db: Database = Depends(get_db)):
+    try:
+        oid = _oid(booking_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+
+    booking = db.bookings.find_one({"_id": oid})
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
-    return booking
+    return _booking_with_event_type(booking, db)

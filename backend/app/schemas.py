@@ -6,9 +6,15 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class EventTypeBase(BaseModel):
     title: str = Field(..., min_length=2, max_length=120)
     description: str = Field(default="", max_length=500)
-    duration: int = Field(..., ge=15, le=240)
+    duration: int = Field(..., ge=5, le=480)
     url_slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9-]+$")
-    accent_color: str = Field(default="#0f172a", max_length=30)
+    accent_color: str = Field(default="#6366f1", max_length=30)
+    is_active: bool = True
+    buffer_minutes: int = Field(default=0, ge=0, le=120)
+    min_notice_hours: int = Field(default=0, ge=0, le=168)
+    max_advance_days: int = Field(default=60, ge=1, le=365)
+    location: str = Field(default="", max_length=255)
+    location_type: str = Field(default="video", max_length=32)
 
 
 class EventTypeCreate(EventTypeBase):
@@ -20,7 +26,8 @@ class EventTypeUpdate(EventTypeBase):
 
 
 class EventTypeRead(EventTypeBase):
-    id: int
+    id: str
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -32,8 +39,12 @@ class AvailabilityRuleInput(BaseModel):
     is_active: bool = True
 
 
-class AvailabilityRuleRead(AvailabilityRuleInput):
-    id: int
+class AvailabilityRuleRead(BaseModel):
+    id: str
+    day_of_week: int
+    start_time: time
+    end_time: time
+    is_active: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,8 +60,8 @@ class AvailabilityRead(BaseModel):
 
 
 class BookingRead(BaseModel):
-    id: int
-    event_type_id: int
+    id: str
+    event_type_id: str
     booker_name: str
     booker_email: str
     notes: str
@@ -65,7 +76,7 @@ class BookingRead(BaseModel):
 
 
 class PublicEventTypeRead(BaseModel):
-    id: int
+    id: str
     title: str
     description: str
     duration: int
@@ -118,7 +129,7 @@ class BlockoutDateCreate(BaseModel):
 
 
 class BlockoutDateRead(BaseModel):
-    id: int
+    id: str
     date: date
     reason: str
     created_at: datetime
@@ -130,4 +141,5 @@ class DashboardSummary(BaseModel):
     event_types_count: int
     upcoming_bookings_count: int
     past_bookings_count: int
-
+    this_week_count: int = 0
+    total_bookings_count: int = 0
