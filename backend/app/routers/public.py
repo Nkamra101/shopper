@@ -9,6 +9,8 @@ from ..schemas import BookingCreate, BookingRead, PublicEventTypeRead, SlotRead
 from ..services.booking_service import generate_slots, get_public_event_type, normalize_booking_start
 from ..services.email_service import send_email_background
 from ..services.otp_service import consume_verification_token
+from ..services.webhook_service import fire_webhooks
+from ..services.workflow_service import fire_workflows as fire_workflow_actions
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -112,7 +114,7 @@ def create_booking(
         "booker_email": payload.booker_email,
         "notes": payload.notes,
         "status": "confirmed",
-        "meeting_url": f"https://meet.jit.si/schedulr-{uuid.uuid4().hex[:12]}",
+        "meeting_url": f"https://meet.jit.si/shopper-{uuid.uuid4().hex[:12]}",
         "start_time": start_utc,
         "end_time": start_utc + timedelta(minutes=event_type["duration"]),
         "created_at": now,
@@ -129,6 +131,16 @@ def create_booking(
         start_time=booking["start_time"].strftime("%A, %B %d, %Y at %I:%M %p"),
         meeting_url=booking.get("meeting_url"),
     )
+    _event_payload = {
+        "booker_name": enriched["booker_name"],
+        "booker_email": enriched["booker_email"],
+        "event_title": enriched["event_type"]["title"],
+        "start_time": booking["start_time"].strftime("%A, %B %d, %Y at %I:%M %p"),
+        "meeting_url": booking.get("meeting_url", ""),
+        "notes": enriched.get("notes", ""),
+    }
+    background_tasks.add_task(fire_webhooks, db, "booking.confirmed", _event_payload)
+    background_tasks.add_task(fire_workflow_actions, db, "booking.confirmed", _event_payload)
     return enriched
 
 

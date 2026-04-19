@@ -26,6 +26,16 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
+def _log_console_email(*, subject: str, recipient: str, text_body: str) -> bool:
+    logger.warning(
+        "Email console fallback active. Subject=%r Recipient=%s Body=%r",
+        subject,
+        recipient,
+        text_body,
+    )
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Templates
 # ---------------------------------------------------------------------------
@@ -183,8 +193,10 @@ def send_email_now(
     text_body: str,
 ) -> bool:
     """Synchronous send. Returns True on success, False otherwise."""
-    if not settings.smtp_configured:
-        logger.warning("SMTP not configured; refusing to send '%s' to %s", subject, recipient)
+    if settings.email_delivery_mode == "console":
+        return _log_console_email(subject=subject, recipient=recipient, text_body=text_body)
+    if settings.email_delivery_mode == "disabled":
+        logger.warning("Email delivery disabled; refusing to send '%s' to %s", subject, recipient)
         return False
     msg = _build_message(
         subject=subject, recipient=recipient, html_body=html_body, text_body=text_body
@@ -203,8 +215,21 @@ def send_email_background(
 
     Designed for use with FastAPI's ``BackgroundTasks``. Never raises.
     """
-    if not settings.smtp_configured:
-        logger.warning("SMTP not configured; skipping '%s' email to %s", action, recipient)
+    if settings.email_delivery_mode == "console":
+        subject_map = {
+            "booked": f"Booking confirmed: {event_title}",
+            "rescheduled": f"Booking rescheduled: {event_title}",
+            "cancelled": f"Booking cancelled: {event_title}",
+        }
+        subject = subject_map.get(action, f"Booking update: {event_title}")
+        _log_console_email(
+            subject=subject,
+            recipient=recipient,
+            text_body=f"{action}\nEvent: {event_title}\nWhen: {start_time}\nMeeting URL: {meeting_url or 'n/a'}",
+        )
+        return
+    if settings.email_delivery_mode == "disabled":
+        logger.warning("Email delivery disabled; skipping '%s' email to %s", action, recipient)
         return
 
     subject_map = {

@@ -39,6 +39,7 @@ class OtpRequestResult:
     expires_in_seconds: int
     resend_after_seconds: int
     error: Optional[str] = None
+    dev_code: Optional[str] = None
 
 
 @dataclass
@@ -91,10 +92,13 @@ def request_otp(db: Database, email: str) -> OtpRequestResult:
             error="Failed to send verification email. Please try again.",
         )
 
+    # In development with console fallback, surface the code so devs can test
+    dev_code = code if settings.email_delivery_mode == "console" else None
     return OtpRequestResult(
         sent=True,
         expires_in_seconds=settings.OTP_TTL_SECONDS,
         resend_after_seconds=settings.OTP_RATE_LIMIT_SECONDS,
+        dev_code=dev_code,
     )
 
 

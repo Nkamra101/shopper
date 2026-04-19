@@ -86,5 +86,17 @@ class Settings:
     def smtp_configured(self) -> bool:
         return bool(self.SMTP_HOST and self.SMTP_USER and self.SMTP_PASS)
 
+    @property
+    def email_delivery_mode(self) -> str:
+        if self.smtp_configured:
+            return "smtp"
+        if not self.is_production:
+            return "console"
+        return "disabled"
+
+    @property
+    def email_enabled(self) -> bool:
+        return self.email_delivery_mode in {"smtp", "console"}
+
 
 settings = Settings()

@@ -1,571 +1,996 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SectionCard from "../components/SectionCard";
 import { useToast } from "../components/Toast";
+import { api } from "../services/api";
 
 const APP_ORIGIN = typeof window !== "undefined" ? window.location.origin : "https://shopper.app";
 
-// ── Integration definitions ──────────────────────────────────────────────────
+// ─── Brand icons ────────────────────────────────────────────────────────────
+const ICON_COLORS = {
+  google_calendar: "#4285F4", outlook: "#0078D4", apple_calendar: "#555",
+  zoom: "#2D8CFF", google_meet: "#00897B", teams: "#6264A7", webex: "#00BCEB",
+  slack: "#4A154B", discord: "#5865F2", teams_notify: "#6264A7",
+  zapier: "#FF4A00", make: "#6D4AFF", n8n: "#EA4B71",
+  hubspot: "#FF7A59", salesforce: "#00A1E0", pipedrive: "#172B4D",
+  notion: "#000", airtable: "#FCB400", linear: "#5E6AD2",
+  stripe: "#635BFF", google_analytics: "#E37400", twilio: "#F22F46",
+};
+
+function IntegrationIcon({ intKey, size = 40 }) {
+  const bg = ICON_COLORS[intKey] || "#6366f1";
+  const icons = {
+    google_calendar: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M8 2v4M16 2v4M3 10h18" />
+      </svg>
+    ),
+    outlook: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M8 2v4M16 2v4M3 10h18M8 14h.01M12 14h.01" />
+      </svg>
+    ),
+    apple_calendar: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M8 2v4M16 2v4M3 10h18M12 14v4M10 16h4" />
+      </svg>
+    ),
+    zoom: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" />
+      </svg>
+    ),
+    google_meet: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><circle cx="8" cy="12" r="2" />
+      </svg>
+    ),
+    teams: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+    webex: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /><path d="M5 12h5M7 10v4" />
+      </svg>
+    ),
+    slack: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z" />
+        <path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z" />
+        <path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z" />
+        <path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z" />
+        <path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z" />
+        <path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z" />
+        <path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z" />
+        <path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z" />
+      </svg>
+    ),
+    discord: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 12h.01M15 12h.01" />
+        <path d="M8 19l-3 3v-3H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-2v3l-3-3H8z" />
+      </svg>
+    ),
+    zapier: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+      </svg>
+    ),
+    make: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" /><circle cx="4" cy="6" r="2" /><circle cx="20" cy="6" r="2" /><circle cx="4" cy="18" r="2" /><circle cx="20" cy="18" r="2" />
+        <line x1="6" y1="6" x2="10" y2="10" /><line x1="18" y1="6" x2="14" y2="10" /><line x1="6" y1="18" x2="10" y2="14" /><line x1="18" y1="18" x2="14" y2="14" />
+      </svg>
+    ),
+    n8n: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    ),
+    hubspot: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><circle cx="19" cy="11" r="3" />
+      </svg>
+    ),
+    salesforce: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+      </svg>
+    ),
+    pipedrive: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" />
+      </svg>
+    ),
+    notion: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="9" y1="13" x2="15" y2="13" /><line x1="9" y1="17" x2="15" y2="17" />
+      </svg>
+    ),
+    airtable: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="8" height="5" rx="1" /><rect x="13" y="3" width="8" height="5" rx="1" /><rect x="3" y="10" width="8" height="5" rx="1" /><rect x="13" y="10" width="8" height="5" rx="1" /><rect x="3" y="17" width="8" height="4" rx="1" /><rect x="13" y="17" width="8" height="4" rx="1" />
+      </svg>
+    ),
+    linear: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" /><path d="M12 8l4 4-4 4-4-4 4-4z" />
+      </svg>
+    ),
+    stripe: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" />
+      </svg>
+    ),
+    google_analytics: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    ),
+    twilio: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.36 12 19.79 19.79 0 0 1 1.21 3.44 2 2 0 0 1 3.18 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z" />
+      </svg>
+    ),
+    teams_notify: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+    ),
+  };
+  return (
+    <div className="integration-icon" style={{ background: bg, width: size, height: size }}>
+      {icons[intKey] || (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
+// ─── Data ────────────────────────────────────────────────────────────────────
+const WEBHOOK_KEYS = new Set(["slack", "discord", "teams_notify"]);
+const VIDEO_URL_KEYS = new Set(["zoom", "teams", "webex"]);
+
 const INTEGRATIONS = [
-  {
-    key: "google_calendar",
-    name: "Google Calendar",
-    category: "calendar",
-    tagline: "Sync bookings & block busy times",
-    desc: "Automatically add every confirmed booking to your Google Calendar and prevent double-bookings by blocking off your busy slots.",
-    badge: "Popular",
-    steps: ["Click Connect below", "Sign in with your Google account", "Approve calendar read+write access"],
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect x="2" y="6" width="44" height="40" rx="6" fill="#4285F4"/>
-        <rect x="2" y="6" width="44" height="14" rx="6" fill="#1a73e8"/>
-        <rect x="2" y="14" width="44" height="6" fill="#1a73e8"/>
-        <path d="M14 4v8M34 4v8" stroke="white" strokeWidth="3.5" strokeLinecap="round"/>
-        <rect x="10" y="26" width="8" height="8" rx="2" fill="white"/>
-        <rect x="20" y="26" width="8" height="8" rx="2" fill="white"/>
-        <rect x="30" y="26" width="8" height="8" rx="2" fill="white"/>
-        <rect x="10" y="36" width="8" height="6" rx="2" fill="white"/>
-        <rect x="20" y="36" width="8" height="6" rx="2" fill="white"/>
-      </svg>
-    ),
-  },
-  {
-    key: "zoom",
-    name: "Zoom",
-    category: "video",
-    tagline: "Auto-generate Zoom links",
-    desc: "Create a unique Zoom meeting room for every booking automatically. The link gets emailed to the guest and appears in the booking confirmation.",
-    badge: "Popular",
-    steps: ["Click Connect below", "Log in to your Zoom account", "Authorize the Shopper app"],
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#2D8CFF"/>
-        <path d="M26 17H10a5 5 0 0 0-5 5v4a5 5 0 0 0 5 5h16a5 5 0 0 0 5-5v-4a5 5 0 0 0-5-5z" fill="white"/>
-        <path d="M43 19l-8 6v-2a2 2 0 0 0-2-2h2l8-5v3z" fill="white"/>
-        <path d="M43 29l-8-6v2a2 2 0 0 0 2 2h-2l8 5v-3z" fill="white"/>
-      </svg>
-    ),
-  },
-  {
-    key: "google_meet",
-    name: "Google Meet",
-    category: "video",
-    tagline: "Generate Meet rooms instantly",
-    desc: "Every confirmed booking gets a Google Meet room link. No extra software needed — just click and join.",
-    steps: ["Click Connect below", "Sign in with Google", "Grant Meet access"],
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#00897B"/>
-        <rect x="8" y="15" width="22" height="18" rx="3" fill="white"/>
-        <path d="M34 18l10 4v4l-10 4V18z" fill="white"/>
-      </svg>
-    ),
-  },
-  {
-    key: "microsoft_teams",
-    name: "Microsoft Teams",
-    category: "video",
-    tagline: "Teams meeting links on every booking",
-    desc: "Automatically create Microsoft Teams meeting rooms when a booking is confirmed.",
-    comingSoon: true,
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#5059C9"/>
-        <circle cx="32" cy="14" r="6" fill="#7B83EB"/>
-        <path d="M20 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16z" fill="#E2E2F9"/>
-        <path d="M38 22h-6a4 4 0 0 0-4 4v10h10a4 4 0 0 0 4-4V26a4 4 0 0 0-4-4z" fill="#5059C9"/>
-        <path d="M28 22H8a4 4 0 0 0-4 4v9a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-9a4 4 0 0 0-4-4z" fill="#7B83EB"/>
-      </svg>
-    ),
-  },
-  {
-    key: "outlook",
-    name: "Outlook Calendar",
-    category: "calendar",
-    tagline: "Keep Outlook in sync",
-    desc: "Sync all your Shopper bookings to Microsoft Outlook Calendar and block off busy times across your org.",
-    comingSoon: true,
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#0078D4"/>
-        <rect x="6" y="13" width="36" height="26" rx="3" fill="none" stroke="white" strokeWidth="2.5"/>
-        <path d="M6 21h36M6 29h36" stroke="white" strokeWidth="1.5"/>
-        <path d="M16 13V7M32 13V7" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
-  {
-    key: "slack",
-    name: "Slack",
-    category: "notifications",
-    tagline: "Booking alerts in Slack",
-    desc: "Get instant Slack messages whenever a booking is made, cancelled, or rescheduled. Never miss a meeting request.",
-    comingSoon: true,
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#4A154B"/>
-        <g strokeWidth="3.5" strokeLinecap="round">
-          <path d="M18 9a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="#E01E5A" stroke="none"/>
-          <path d="M18 17v8" stroke="#E01E5A"/>
-          <path d="M18 25h8" stroke="#36C5F0"/>
-          <path d="M30 17a4 4 0 1 0 0 8 4 4 0 0 0 0-8z" fill="#2EB67D" stroke="none"/>
-          <path d="M30 25v8" stroke="#2EB67D"/>
-          <path d="M30 33H22" stroke="#ECB22E"/>
-          <path d="M10 18a4 4 0 1 0 8 0 4 4 0 0 0-8 0z" fill="#ECB22E" stroke="none"/>
-          <path d="M30 30a4 4 0 1 0-8 0 4 4 0 0 0 8 0z" fill="#E01E5A" stroke="none"/>
-        </g>
-      </svg>
-    ),
-  },
-  {
-    key: "zapier",
-    name: "Zapier",
-    category: "automation",
-    tagline: "Connect 5,000+ apps",
-    desc: "Trigger Zapier workflows on any booking event — push to CRMs, spreadsheets, project tools, and more.",
-    comingSoon: true,
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#FF4A00"/>
-        <path d="M24 8l4 10h10l-8 6 3 10-9-6-9 6 3-10-8-6h10z" fill="white"/>
-      </svg>
-    ),
-  },
-  {
-    key: "hubspot",
-    name: "HubSpot CRM",
-    category: "crm",
-    tagline: "Sync contacts & deals",
-    desc: "Automatically create or update HubSpot contacts when someone books with you, and log the meeting as an activity.",
-    comingSoon: true,
-    icon: (
-      <svg viewBox="0 0 48 48" width="32" height="32">
-        <rect width="48" height="48" rx="12" fill="#FF7A59"/>
-        <circle cx="33" cy="15" r="6" fill="white"/>
-        <path d="M16 24a8 8 0 1 0 16 0A8 8 0 0 0 16 24z" fill="white"/>
-        <path d="M33 21v10" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-      </svg>
-    ),
-  },
+  { key: "google_calendar", name: "Google Calendar", category: "calendar", status: "ready", highlight: "Most popular", tagline: "Sync confirmed bookings with your Google Calendar.", description: "Every confirmed meeting automatically appears on your calendar. Prevent overlaps and keep your schedule in one place without manual sync.", outcomes: ["Sync confirmed meetings automatically", "Prevent overlap with your calendar", "Keep guest bookings in one timeline"] },
+  { key: "outlook", name: "Microsoft Outlook", category: "calendar", status: "ready", tagline: "Keep Outlook calendar up to date with every booking.", description: "Push new, cancelled, and rescheduled meetings into Outlook so your availability is always accurate across the Microsoft ecosystem.", outcomes: ["Automatic calendar entries", "Works with Microsoft 365", "Syncs cancellations and reschedules"] },
+  { key: "apple_calendar", name: "Apple Calendar / iCal", category: "calendar", status: "ready", tagline: "Subscribe to a live iCal feed of your bookings.", description: "Get a live iCal feed URL for your confirmed bookings. Subscribe once in Apple Calendar, Google Calendar, or Outlook and it stays in sync automatically.", outcomes: ["Live iCal feed URL", "Works on iPhone, Mac, and any iCal app", "No manual export — subscribe once"] },
+  { key: "zoom", name: "Zoom", category: "video", status: "ready", highlight: "Fast setup", tagline: "Set your Zoom room URL for every booking.", description: "Save your personal Zoom meeting room link and it will be included in all confirmation emails automatically.", outcomes: ["Meeting link in confirmation emails", "One-click join for guests", "No per-meeting creation needed"] },
+  { key: "google_meet", name: "Google Meet", category: "video", status: "ready", tagline: "Default video layer for Google-first teams.", description: "Mark Google Meet as your video provider so auto-generated Meet links are included in booking confirmations.", outcomes: ["Works with Google Workspace", "Links auto-generated per booking", "Pairs well with Google Calendar"] },
+  { key: "teams", name: "Microsoft Teams", category: "video", status: "ready", tagline: "Set your Teams meeting URL for bookings.", description: "Save your Teams meeting room URL and include it in booking confirmation emails for enterprise video.", outcomes: ["Teams link in confirmation emails", "Works with Microsoft 365", "No per-meeting provisioning needed"] },
+  { key: "webex", name: "Cisco Webex", category: "video", status: "soon", tagline: "Create Webex spaces for each meeting.", description: "Automatically provision Webex rooms for enterprise clients who prefer Cisco's video infrastructure.", outcomes: ["One Webex room per booking", "Enterprise-grade video", "Link in confirmation flow"] },
+  { key: "slack", name: "Slack", category: "notifications", status: "ready", tagline: "Send booking alerts directly to Slack channels.", description: "Post a message to any Slack channel via incoming webhook when a booking is created, cancelled, or rescheduled.", outcomes: ["Post alerts in channels", "Route changes to ops teams", "Reduce missed dashboard updates"] },
+  { key: "discord", name: "Discord", category: "notifications", status: "ready", tagline: "Send booking notifications to Discord servers.", description: "Configure an incoming webhook URL to push booking events into Discord channels — useful for teams that coordinate on Discord.", outcomes: ["Webhook-based alerts", "Custom message format", "Works on any Discord server"] },
+  { key: "teams_notify", name: "Teams Notifications", category: "notifications", status: "ready", tagline: "Alert your team via Microsoft Teams messages.", description: "Send messages to Teams channels via incoming webhook when bookings change so scheduling stays visible inside your hub.", outcomes: ["Rich message format", "Configurable channels", "Works alongside Teams video"] },
+  { key: "zapier", name: "Zapier", category: "automation", status: "soon", tagline: "Connect Shopper to 6,000+ apps via Zaps.", description: "Use booking events to update spreadsheets, CRMs, task boards, and internal workflows — no code required.", outcomes: ["Automate repetitive admin", "Send data to 6,000+ apps", "Trigger on booking changes"] },
+  { key: "make", name: "Make", category: "automation", status: "soon", tagline: "Build visual automation scenarios with booking data.", description: "Use Make (formerly Integromat) to orchestrate multi-step automations triggered by Shopper booking events with powerful branching logic.", outcomes: ["Visual no-code builder", "Advanced branching and filtering", "Handles complex multi-step flows"] },
+  { key: "n8n", name: "n8n", category: "automation", status: "soon", tagline: "Self-hosted automation for full data control.", description: "Connect Shopper to any system using n8n's open-source workflow engine. Keep booking data inside your infrastructure.", outcomes: ["Self-hostable", "Open source", "Full control over data routing"] },
+  { key: "hubspot", name: "HubSpot", category: "crm", status: "soon", tagline: "Enrich contacts and log meetings in HubSpot.", description: "Sync new bookers to HubSpot as contacts and log each meeting as an activity so your sales pipeline stays accurate.", outcomes: ["Sync new contacts automatically", "Log meetings as activities", "Connect bookings to deals"] },
+  { key: "salesforce", name: "Salesforce", category: "crm", status: "soon", tagline: "Push booking activity into Salesforce records.", description: "Create or update Salesforce contacts and opportunities when bookings are confirmed, keeping your CRM data fresh.", outcomes: ["Contact creation on booking", "Opportunity enrichment", "Works with Lightning and Classic"] },
+  { key: "pipedrive", name: "Pipedrive", category: "crm", status: "soon", tagline: "Link meetings to deals and contacts in Pipedrive.", description: "Automatically log booking activity in Pipedrive so sales reps always have accurate context before every call.", outcomes: ["Activity logging per booking", "Deal stage tracking", "Contact enrichment"] },
+  { key: "notion", name: "Notion", category: "productivity", status: "soon", tagline: "Log bookings into a Notion database.", description: "Append confirmed bookings to a Notion database page so you can manage scheduling context alongside notes and tasks.", outcomes: ["Auto-populate a Notion DB", "Include guest details and links", "Works with any database template"] },
+  { key: "airtable", name: "Airtable", category: "productivity", status: "soon", tagline: "Send booking rows into Airtable bases.", description: "Populate an Airtable base with each new booking so ops teams can manage scheduling data alongside spreadsheet workflows.", outcomes: ["Rows added per booking", "Choose target base and table", "Custom field mapping"] },
+  { key: "linear", name: "Linear", category: "productivity", status: "soon", tagline: "Create Linear issues when key bookings land.", description: "Automatically open a Linear issue for important meeting types so follow-up tasks exist before the meeting even starts.", outcomes: ["Issue per booking event", "Configurable project and team", "Link meeting URL in issue"] },
+  { key: "stripe", name: "Stripe", category: "payments", status: "soon", highlight: "High demand", tagline: "Collect payment before a booking is confirmed.", description: "Require a Stripe payment checkout before a slot is confirmed — useful for paid consultations, workshops, and services.", outcomes: ["Collect payment before confirmation", "Refund on cancellation", "Works with Stripe Checkout"] },
+  { key: "google_analytics", name: "Google Analytics", category: "analytics", status: "soon", tagline: "Track booking funnel events in GA4.", description: "Send booking flow events to GA4 to measure conversion through your funnel.", outcomes: ["Funnel event tracking", "GA4 compatible", "Measure OTP and confirmation drop-off"] },
+  { key: "twilio", name: "Twilio SMS", category: "notifications", status: "soon", tagline: "Send booking confirmations via SMS.", description: "Deliver booking confirmations and reminder messages to guests via SMS using Twilio.", outcomes: ["SMS confirmations", "Reminder messages before meetings", "International coverage"] },
 ];
 
-const CATEGORIES = [
+const CATEGORY_FILTERS = [
   { key: "all", label: "All" },
-  { key: "calendar", label: "📅 Calendar" },
-  { key: "video", label: "📹 Video" },
-  { key: "notifications", label: "🔔 Notifications" },
-  { key: "automation", label: "⚡ Automation" },
-  { key: "crm", label: "👥 CRM" },
+  { key: "calendar", label: "Calendar" },
+  { key: "video", label: "Video" },
+  { key: "notifications", label: "Notifications" },
+  { key: "automation", label: "Automation" },
+  { key: "crm", label: "CRM" },
+  { key: "productivity", label: "Productivity" },
+  { key: "payments", label: "Payments" },
+  { key: "analytics", label: "Analytics" },
 ];
 
-function IntegrationCard({ intg, connected, onToggle }) {
-  const [expanded, setExpanded] = useState(false);
+const API_ENDPOINTS = [
+  { method: "GET", path: "/api/auth/me", detail: "Return current user profile and extended fields" },
+  { method: "PUT", path: "/api/auth/profile", detail: "Update display name, bio, avatar color, booking username" },
+  { method: "PUT", path: "/api/auth/change-password", detail: "Change password for email/password accounts" },
+  { method: "GET", path: "/api/auth/api-keys", detail: "List API keys (prefix and creation date only)" },
+  { method: "POST", path: "/api/auth/api-keys", detail: "Generate a new API key (returned once)" },
+  { method: "DELETE", path: "/api/auth/api-keys", detail: "Revoke all API keys" },
+  { method: "GET", path: "/api/integrations", detail: "List all connected integrations with config" },
+  { method: "POST", path: "/api/integrations/{key}", detail: "Connect or update an integration with config" },
+  { method: "DELETE", path: "/api/integrations/{key}", detail: "Disconnect an integration" },
+  { method: "POST", path: "/api/integrations/{key}/test", detail: "Send a test webhook payload" },
+  { method: "GET", path: "/api/event-types", detail: "List all event types for the authenticated user" },
+  { method: "POST", path: "/api/event-types", detail: "Create a new event type with full configuration" },
+  { method: "PUT", path: "/api/event-types/{id}", detail: "Update event type fields" },
+  { method: "PATCH", path: "/api/event-types/{id}/toggle", detail: "Pause or resume an event type" },
+  { method: "POST", path: "/api/event-types/{id}/duplicate", detail: "Clone an event type with a new slug" },
+  { method: "GET", path: "/api/bookings", detail: "Fetch bookings — scope: all | upcoming | past" },
+  { method: "POST", path: "/api/bookings", detail: "Admin-create a booking for a guest" },
+  { method: "PATCH", path: "/api/bookings/{id}/notes", detail: "Update internal notes on a booking" },
+  { method: "POST", path: "/api/bookings/{id}/cancel", detail: "Cancel a booking and notify the guest" },
+  { method: "POST", path: "/api/bookings/{id}/reschedule", detail: "Move booking to a new available slot" },
+  { method: "GET", path: "/api/availability", detail: "Return timezone and weekly availability rules" },
+  { method: "PUT", path: "/api/availability", detail: "Update timezone and all weekly rules" },
+  { method: "GET", path: "/api/blockouts", detail: "List blocked dates" },
+  { method: "POST", path: "/api/blockouts", detail: "Block a specific date with an optional reason" },
+  { method: "DELETE", path: "/api/blockouts/{date}", detail: "Remove a blockout date" },
+  { method: "GET", path: "/api/summary", detail: "Dashboard-level metrics (event counts, booking counts)" },
+  { method: "GET", path: "/api/public/ical/{username}", detail: "Download iCal feed of confirmed bookings (no auth)" },
+  { method: "GET", path: "/api/public/event-types/{slug}", detail: "Fetch public event type (no auth)" },
+  { method: "GET", path: "/api/public/event-types/{slug}/slots", detail: "Get available slots for a date" },
+  { method: "POST", path: "/api/public/event-types/{slug}/book", detail: "Guest creates a booking with OTP token" },
+  { method: "POST", path: "/api/public/otp/request", detail: "Send OTP code to guest email" },
+  { method: "POST", path: "/api/public/otp/verify", detail: "Verify OTP and return verification token" },
+];
+
+const WEBHOOK_EVENTS = [
+  { key: "booking.confirmed", label: "Booking confirmed", desc: "Fired when a new booking is created" },
+  { key: "booking.cancelled", label: "Booking cancelled", desc: "Fired when a booking is cancelled" },
+  { key: "booking.rescheduled", label: "Booking rescheduled", desc: "Fired when a booking start time changes" },
+];
+
+const WEBHOOK_FORMATS = [
+  { key: "json", label: "Generic JSON" },
+  { key: "slack", label: "Slack (text)" },
+  { key: "discord", label: "Discord (content)" },
+];
+
+// ─── Connection modal ────────────────────────────────────────────────────────
+const ICAL_KEYS = new Set(["apple_calendar"]);
+const OAUTH_KEYS = new Set(["google_calendar", "outlook", "google_meet"]);
+
+function ConnectModal({ integration, onClose, onSave, bookingUsername }) {
+  const isWebhook = WEBHOOK_KEYS.has(integration.key);
+  const isVideo = VIDEO_URL_KEYS.has(integration.key);
+  const isIcal = ICAL_KEYS.has(integration.key);
+  const isOAuth = OAUTH_KEYS.has(integration.key);
+
+  const [urlValue, setUrlValue] = useState("");
+  const [format, setFormat] = useState(
+    integration.key === "slack" ? "slack" : integration.key === "discord" ? "discord" : "json"
+  );
+  const [events, setEvents] = useState(new Set(["booking.confirmed", "booking.cancelled", "booking.rescheduled"]));
+  const [saving, setSaving] = useState(false);
+
+  function toggleEvent(key) {
+    setEvents((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    let config = {};
+    if (isWebhook) {
+      if (!urlValue.trim()) { setSaving(false); return; }
+      config = { webhook_url: urlValue.trim(), format, events: [...events] };
+    } else if (isVideo) {
+      if (!urlValue.trim()) { setSaving(false); return; }
+      config = { video_url: urlValue.trim() };
+    }
+    await onSave(integration.key, config);
+    setSaving(false);
+    onClose();
+  }
+
+  const icalUrl = bookingUsername ? api.icalUrl(bookingUsername) : null;
+
+  const videoPlaceholders = {
+    zoom: "https://zoom.us/j/your-meeting-id",
+    teams: "https://teams.microsoft.com/l/meetup-join/…",
+    webex: "https://your-org.webex.com/meet/your-room",
+  };
+
+  const webhookPlaceholders = {
+    slack: "https://hooks.slack.com/services/T00000000/B00000000/xxxx",
+    discord: "https://discord.com/api/webhooks/0000000000/xxxx",
+    teams_notify: "https://your-org.webhook.office.com/webhookb2/xxxx",
+  };
 
   return (
-    <div className={`intg-card ${connected ? "intg-card-connected" : ""} ${intg.comingSoon ? "intg-card-soon" : ""}`}>
-      <div className="intg-card-top">
-        <div className="intg-card-icon">{intg.icon}</div>
-        <div className="intg-card-info">
-          <div className="intg-card-title-row">
-            <h4 className="intg-card-name">{intg.name}</h4>
-            <div className="intg-card-badges">
-              {intg.badge && <span className="intg-badge intg-badge-popular">{intg.badge}</span>}
-              {intg.comingSoon && <span className="intg-badge intg-badge-soon">Coming soon</span>}
-              {connected && (
-                <span className="intg-badge intg-badge-connected">
-                  <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="currentColor"/></svg>
-                  Connected
-                </span>
-              )}
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-panel" style={{ maxWidth: 500 }}>
+        <div className="modal-header">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <IntegrationIcon intKey={integration.key} size={40} />
+            <div>
+              <h3 style={{ margin: 0 }}>Connect {integration.name}</h3>
+              <p className="modal-subtitle" style={{ margin: 0 }}>{integration.tagline}</p>
             </div>
           </div>
-          <p className="intg-card-tagline">{intg.tagline}</p>
+          <button className="modal-close" onClick={onClose}>×</button>
         </div>
-      </div>
 
-      <p className="intg-card-desc">{intg.desc}</p>
+        <div className="modal-body">
+          {isWebhook && (
+            <>
+              <label>
+                Incoming webhook URL
+                <input
+                  type="url"
+                  value={urlValue}
+                  onChange={(e) => setUrlValue(e.target.value)}
+                  placeholder={webhookPlaceholders[integration.key] || "https://your-domain.com/hooks/booking"}
+                  autoFocus
+                />
+              </label>
+              <label style={{ marginTop: "var(--space-3)" }}>
+                Message format
+                <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                  {WEBHOOK_FORMATS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+                </select>
+              </label>
+              <div style={{ marginTop: "var(--space-4)" }}>
+                <p className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Subscribe to events</p>
+                {WEBHOOK_EVENTS.map((ev) => (
+                  <label key={ev.key} className="webhook-event-row">
+                    <input type="checkbox" checked={events.has(ev.key)} onChange={() => toggleEvent(ev.key)} />
+                    <div className="webhook-event-copy">
+                      <strong>{ev.label}</strong>
+                      <span>{ev.desc}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
 
-      {!intg.comingSoon && intg.steps && (
-        <div>
-          <button
-            type="button"
-            className="intg-expand-btn"
-            onClick={() => setExpanded((v) => !v)}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 180ms" }}>
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-            {expanded ? "Hide" : "How to connect"}
-          </button>
-          {expanded && (
-            <ol className="intg-steps">
-              {intg.steps.map((s, i) => (
-                <li key={i} className="intg-step-item">
-                  <span className="intg-step-num">{i + 1}</span>
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ol>
+          {isVideo && (
+            <label>
+              Default meeting room URL
+              <input
+                type="url"
+                value={urlValue}
+                onChange={(e) => setUrlValue(e.target.value)}
+                placeholder={videoPlaceholders[integration.key] || "https://your-video-url.com/room"}
+                autoFocus
+              />
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6 }}>
+                This URL will be sent to guests in booking confirmation emails.
+              </p>
+            </label>
+          )}
+
+          {isIcal && (
+            <div>
+              {icalUrl ? (
+                <>
+                  <p style={{ marginBottom: "var(--space-3)" }}>
+                    Subscribe to this URL in any calendar app to receive your confirmed bookings automatically.
+                  </p>
+                  <div className="booking-url-box" style={{ marginBottom: "var(--space-3)" }}>
+                    <code className="booking-url-text" style={{ fontSize: 12 }}>{icalUrl}</code>
+                  </div>
+                  <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                    <strong>Google Calendar:</strong> Other calendars → From URL<br />
+                    <strong>Outlook:</strong> Add calendar → From internet<br />
+                    <strong>iPhone:</strong> Settings → Calendar → Add account → Other → Add subscribed calendar
+                  </p>
+                </>
+              ) : (
+                <p style={{ color: "var(--text-muted)" }}>
+                  Set a <strong>booking username</strong> in your <a href="/profile" style={{ color: "var(--accent)" }}>Profile</a> to generate your iCal feed URL.
+                </p>
+              )}
+            </div>
+          )}
+
+          {isOAuth && (
+            <div>
+              <p style={{ marginBottom: "var(--space-3)" }}>
+                Full OAuth calendar sync is coming soon. Your booking events will sync automatically once connected.
+              </p>
+              <p style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                In the meantime, you can use the <strong>iCal feed</strong> (available in Profile → copy booking URL, then use <code>/api/public/ical/your-username</code>) as a read-only calendar subscription.
+              </p>
+            </div>
           )}
         </div>
-      )}
 
-      <div className="intg-card-footer">
-        {intg.comingSoon ? (
-          <button className="secondary-button" disabled style={{ opacity: 0.55, fontSize: 13 }}>
-            Coming soon
-          </button>
-        ) : connected ? (
-          <button className="ghost-button" style={{ fontSize: 13 }} onClick={() => onToggle(intg.key)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12"/>
-            </svg>
-            Disconnect
-          </button>
-        ) : (
-          <button className="primary-button" style={{ fontSize: 13 }} onClick={() => onToggle(intg.key)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-            </svg>
-            Connect
-          </button>
-        )}
-        {connected && (
-          <span style={{ fontSize: 12, color: "var(--success)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            Active & syncing
-          </span>
-        )}
+        <div className="modal-footer">
+          <button type="button" className="ghost-button" onClick={onClose}>Cancel</button>
+          {(isWebhook || isVideo) ? (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleSave}
+              disabled={saving || !urlValue.trim()}
+            >
+              {saving ? <><span className="btn-spinner" />Connecting…</> : "Connect"}
+            </button>
+          ) : isIcal ? (
+            <button type="button" className="primary-button" onClick={onClose}>
+              {icalUrl ? "Done" : "Close"}
+            </button>
+          ) : (
+            <button type="button" className="primary-button" onClick={() => { onSave(integration.key, {}); onClose(); }}>
+              Mark as connected
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+// ─── Page ────────────────────────────────────────────────────────────────────
 export default function IntegrationsPage() {
   const toast = useToast();
-  const [connections, setConnections] = useState({ google_calendar: false, zoom: false, google_meet: false });
+
+  const [loadingConnections, setLoadingConnections] = useState(true);
+  const [connections, setConnections] = useState({});
+  const [modal, setModal] = useState(null);
+  const [disconnecting, setDisconnecting] = useState(null);
+  const [testing, setTesting] = useState(null);
+
   const [category, setCategory] = useState("all");
+  const [search, setSearch] = useState("");
   const [embedTab, setEmbedTab] = useState("iframe");
-  const [embedCopied, setEmbedCopied] = useState(false);
-  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [copiedKey, setCopiedKey] = useState("");
+
+  // Webhook section (generic webhook)
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSaved, setWebhookSaved] = useState(false);
-  const [meetingLink, setMeetingLink] = useState("");
-  const [meetingLinkSaved, setMeetingLinkSaved] = useState(false);
+  const [webhookFormat, setWebhookFormat] = useState("json");
+  const [webhookEvents, setWebhookEvents] = useState(new Set(["booking.confirmed", "booking.cancelled"]));
+  const [savingWebhook, setSavingWebhook] = useState(false);
 
-  const demoApiKey = "sk_live_shopper_••••••••••••••••••••••";
-  const realApiKey = "sk_live_shopper_d4f8a9b2c1e3f70512abc98765def321";
+  // API keys
+  const [apiKeyData, setApiKeyData] = useState(null);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [revokingKey, setRevokingKey] = useState(false);
+  const [loadingKeys, setLoadingKeys] = useState(true);
+  const [existingKeyPrefix, setExistingKeyPrefix] = useState(null);
 
-  function toggleConnection(key) {
-    const next = !connections[key];
-    setConnections((c) => ({ ...c, [key]: next }));
-    const name = INTEGRATIONS.find((i) => i.key === key)?.name || key;
-    if (next) toast.success(`${name} connected! (demo mode)`);
-    else toast.info(`${name} disconnected.`);
+  const [apiSearch, setApiSearch] = useState("");
+
+  // Booking username for iCal URL
+  const [bookingUsername, setBookingUsername] = useState("");
+
+  // Load integrations + API keys + profile on mount
+  useEffect(() => {
+    async function load() {
+      try {
+        const [intList, me] = await Promise.all([api.getIntegrations(), api.getMe()]);
+        const map = {};
+        for (const i of intList) {
+          map[i.key] = i;
+        }
+        setConnections(map);
+        setBookingUsername(me.booking_username || "");
+
+        // Pre-populate webhook section from generic_webhook integration
+        const gw = map["generic_webhook"];
+        if (gw?.config) {
+          setWebhookUrl(gw.config.webhook_url || "");
+          setWebhookFormat(gw.config.format || "json");
+          setWebhookEvents(new Set(gw.config.events || ["booking.confirmed", "booking.cancelled"]));
+        }
+      } catch (err) {
+        toast.error(err.message || "Could not load integrations.");
+      } finally {
+        setLoadingConnections(false);
+      }
+    }
+
+    async function loadKeys() {
+      try {
+        const keys = await api.getApiKeys();
+        if (keys.length > 0) {
+          setExistingKeyPrefix(keys[0].prefix);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoadingKeys(false);
+      }
+    }
+
+    load();
+    loadKeys();
+  }, [toast]);
+
+  const filteredIntegrations = useMemo(() => {
+    let list = category === "all" ? INTEGRATIONS : INTEGRATIONS.filter((i) => i.category === category);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((i) => i.name.toLowerCase().includes(q) || i.tagline.toLowerCase().includes(q) || i.category.includes(q));
+    }
+    return list;
+  }, [category, search]);
+
+  const connectedList = INTEGRATIONS.filter((i) => connections[i.key]);
+  const connectedCount = connectedList.length;
+  const readyCount = INTEGRATIONS.filter((i) => i.status === "ready").length;
+  const soonCount = INTEGRATIONS.filter((i) => i.status === "soon").length;
+
+  const filteredApiEndpoints = useMemo(() => {
+    if (!apiSearch.trim()) return API_ENDPOINTS;
+    const q = apiSearch.toLowerCase();
+    return API_ENDPOINTS.filter((e) => e.path.toLowerCase().includes(q) || e.detail.toLowerCase().includes(q) || e.method.toLowerCase().includes(q));
+  }, [apiSearch]);
+
+  async function handleConnectSave(key, config) {
+    try {
+      await api.saveIntegration(key, config);
+      setConnections((prev) => ({ ...prev, [key]: { key, config, connected_at: new Date().toISOString() } }));
+      toast.success(`${INTEGRATIONS.find((i) => i.key === key)?.name || key} connected.`);
+    } catch (err) {
+      toast.error(err.message || "Could not connect integration.");
+    }
   }
 
-  const filtered = category === "all"
-    ? INTEGRATIONS
-    : INTEGRATIONS.filter((i) => i.category === category);
-
-  const connectedCount = Object.values(connections).filter(Boolean).length;
-
-  const iframeCode = `<iframe
-  src="${APP_ORIGIN}/book/your-event-slug"
-  width="100%"
-  height="700"
-  frameborder="0"
-  style="border:none;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.12);"
-></iframe>`;
-
-  const floatingCode = `<script>
-  window.__SHOPPER__={slug:'your-event-slug',origin:'${APP_ORIGIN}'};
-  (function(d,s,id){
-    var js,fjs=d.getElementsByTagName(s)[0];
-    if(d.getElementById(id))return;
-    js=d.createElement(s);js.id=id;
-    js.src='${APP_ORIGIN}/widget.js';
-    fjs.parentNode.insertBefore(js,fjs);
-  }(document,'script','shopper-widget'));
-</script>`;
-
-  function copyEmbed() {
-    const code = embedTab === "iframe" ? iframeCode : floatingCode;
-    navigator.clipboard.writeText(code);
-    setEmbedCopied(true);
-    toast.success("Code copied!");
-    setTimeout(() => setEmbedCopied(false), 2000);
+  async function handleDisconnect(key) {
+    setDisconnecting(key);
+    try {
+      await api.disconnectIntegration(key);
+      setConnections((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      toast.success(`${INTEGRATIONS.find((i) => i.key === key)?.name || key} disconnected.`);
+    } catch (err) {
+      toast.error(err.message || "Could not disconnect.");
+    } finally {
+      setDisconnecting(null);
+    }
   }
 
-  function copyApiKey() {
-    navigator.clipboard.writeText(realApiKey);
-    setApiKeyCopied(true);
-    toast.success("API key copied!");
-    setTimeout(() => setApiKeyCopied(false), 2000);
+  function handleCardConnect(integration) {
+    if (connections[integration.key]) {
+      handleDisconnect(integration.key);
+    } else {
+      setModal(integration);
+    }
   }
+
+  async function handleTestWebhook(key) {
+    setTesting(key);
+    try {
+      await api.testIntegration(key);
+      toast.success("Test payload sent.");
+    } catch (err) {
+      toast.error(err.message || "Test failed.");
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  async function handleSaveWebhook() {
+    if (!webhookUrl.trim()) { toast.error("Enter a webhook URL."); return; }
+    if (webhookEvents.size === 0) { toast.error("Subscribe to at least one event."); return; }
+    setSavingWebhook(true);
+    try {
+      const config = { webhook_url: webhookUrl.trim(), format: webhookFormat, events: [...webhookEvents] };
+      await api.saveIntegration("generic_webhook", config);
+      setConnections((prev) => ({ ...prev, generic_webhook: { key: "generic_webhook", config, connected_at: new Date().toISOString() } }));
+      toast.success(`Webhook saved — ${webhookEvents.size} event${webhookEvents.size !== 1 ? "s" : ""} subscribed.`);
+    } catch (err) {
+      toast.error(err.message || "Could not save webhook.");
+    } finally {
+      setSavingWebhook(false);
+    }
+  }
+
+  async function handleGenerateApiKey() {
+    setGeneratingKey(true);
+    try {
+      const result = await api.generateApiKey();
+      setApiKeyData(result);
+      setExistingKeyPrefix(result.prefix);
+      setShowApiKey(true);
+      toast.success("API key generated. Copy it now — it won't be shown again.");
+    } catch (err) {
+      toast.error(err.message || "Could not generate API key.");
+    } finally {
+      setGeneratingKey(false);
+    }
+  }
+
+  async function handleRevokeApiKey() {
+    setRevokingKey(true);
+    try {
+      await api.revokeApiKey();
+      setApiKeyData(null);
+      setExistingKeyPrefix(null);
+      setShowApiKey(false);
+      toast.success("API key revoked.");
+    } catch (err) {
+      toast.error(err.message || "Could not revoke API key.");
+    } finally {
+      setRevokingKey(false);
+    }
+  }
+
+  function copyValue(value, key) {
+    navigator.clipboard.writeText(value);
+    setCopiedKey(key);
+    toast.success("Copied to clipboard.");
+    window.setTimeout(() => setCopiedKey(""), 1800);
+  }
+
+  function toggleWebhookEvent(key) {
+    setWebhookEvents((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  const iframeCode = `<iframe\n  src="${APP_ORIGIN}/book/your-event-slug"\n  width="100%"\n  height="720"\n  style="border:none;border-radius:24px;"\n></iframe>`;
+  const floatingCode = `<!-- Add before </body> -->\n<script>\n  window.__SHOPPER__ = {\n    slug: "your-event-slug",\n    origin: "${APP_ORIGIN}",\n    buttonLabel: "Book a time",\n    buttonColor: "#d06132"\n  };\n</script>\n<script src="${APP_ORIGIN}/embed/widget.js" async></script>`;
+  const popupCode = `<!-- Trigger on any button -->\n<button onclick="Shopper.open('your-event-slug')">Book a time</button>\n<script src="${APP_ORIGIN}/embed/popup.js" async></script>`;
+  const embedCodes = { iframe: iframeCode, floating: floatingCode, popup: popupCode };
+
+  const webhookPayloadExample = `{\n  "event": "booking.confirmed",\n  "booker_name": "Priya Sharma",\n  "booker_email": "priya@example.com",\n  "event_title": "Discovery call",\n  "start_time": "Monday, May 12, 2026 at 10:00 AM",\n  "meeting_url": "https://meet.jit.si/shopper-abc123",\n  "notes": ""\n}`;
+
+  const methodClass = (m) => ({ GET: "get", POST: "post", PUT: "put", PATCH: "patch", DELETE: "delete" }[m] || "get");
+
+  const displayKey = apiKeyData?.key;
+  const displayPrefix = apiKeyData?.prefix || existingKeyPrefix;
 
   return (
     <div className="stack">
-      {/* Connection summary */}
-      <div className="four-col" style={{ gridTemplateColumns: "repeat(3,1fr)" }}>
-        {[
-          { label: "Available", value: INTEGRATIONS.filter((i) => !i.comingSoon).length, icon: "🔌", color: "var(--accent)" },
-          { label: "Connected", value: connectedCount, icon: "✅", color: "var(--success)" },
-          { label: "Coming soon", value: INTEGRATIONS.filter((i) => i.comingSoon).length, icon: "🚀", color: "var(--warning)" },
-        ].map((s) => (
-          <div key={s.label} className="stat-card">
-            <div className="stat-emoji">{s.icon}</div>
-            <strong style={{ color: s.color, fontSize: "1.8rem", fontWeight: 800, letterSpacing: "-0.04em" }}>{s.value}</strong>
-            <span className="stat-label">{s.label}</span>
-          </div>
-        ))}
-      </div>
+      {modal && (
+        <ConnectModal
+          integration={modal}
+          onClose={() => setModal(null)}
+          onSave={handleConnectSave}
+          bookingUsername={bookingUsername}
+        />
+      )}
 
-      {/* Integrations grid */}
-      <SectionCard
-        title="Apps & services"
-        subtitle="Connect your favourite tools to automate your workflow"
-      >
-        {/* Category filter */}
-        <div className="intg-filter-row">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.key}
-              type="button"
-              className={`intg-filter-chip ${category === c.key ? "active" : ""}`}
-              onClick={() => setCategory(c.key)}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="intg-grid">
-          {filtered.map((intg) => (
-            <IntegrationCard
-              key={intg.key}
-              intg={intg}
-              connected={!!connections[intg.key]}
-              onToggle={toggleConnection}
-            />
-          ))}
-        </div>
-      </SectionCard>
-
-      {/* Default meeting link */}
-      <SectionCard
-        title="Default Meeting Link"
-        subtitle="Fallback meeting URL used when no video integration is connected"
-      >
-        <form
-          style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
-          onSubmit={(e) => { e.preventDefault(); setMeetingLinkSaved(true); toast.success("Saved!"); }}
-        >
-          <label>
-            Meeting URL
-            <input
-              type="url"
-              placeholder="https://zoom.us/j/your-personal-room"
-              value={meetingLink}
-              onChange={(e) => { setMeetingLink(e.target.value); setMeetingLinkSaved(false); }}
-            />
-          </label>
-          <div className="button-row">
-            <button type="submit" className="primary-button" disabled={!meetingLink.trim()}>
-              {meetingLinkSaved ? "Saved ✓" : "Save link"}
-            </button>
-          </div>
-        </form>
-        <div className="intg-hint">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          This URL is included in every booking confirmation email when no auto-generated link is available.
-        </div>
-      </SectionCard>
-
-      {/* Embed widget */}
-      <SectionCard title="Embed Widget" subtitle="Add your booking page to any website in seconds">
-        <div className="intg-embed-tabs">
-          <button
-            type="button"
-            className={`intg-embed-tab ${embedTab === "iframe" ? "active" : ""}`}
-            onClick={() => setEmbedTab("iframe")}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-            </svg>
-            Inline embed
-            <span className="intg-badge intg-badge-popular" style={{ fontSize: 10 }}>Recommended</span>
-          </button>
-          <button
-            type="button"
-            className={`intg-embed-tab ${embedTab === "floating" ? "active" : ""}`}
-            onClick={() => setEmbedTab("floating")}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-            </svg>
-            Floating widget
-          </button>
-        </div>
-
-        <p style={{ fontSize: 13.5, color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
-          {embedTab === "iframe"
-            ? "Paste this inside your page HTML where you want the booking calendar to appear."
-            : "Add this before </body> — a floating 'Book now' button appears in the bottom corner."}
-        </p>
-
-        <div className="code-block" style={{ maxHeight: 180 }}>
-          <pre style={{ margin: 0, fontSize: 12.5, padding: "14px 18px", overflowX: "auto", lineHeight: 1.7 }}>
-            {embedTab === "iframe" ? iframeCode : floatingCode}
-          </pre>
-          <button className="code-copy-btn" onClick={copyEmbed}>
-            {embedCopied
-              ? <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Copied</>
-              : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</>
-            }
-          </button>
-        </div>
-      </SectionCard>
-
-      {/* API access */}
-      <SectionCard title="API Access" subtitle="Build custom integrations with the Shopper REST API">
-        <div
-          style={{
-            padding: "var(--space-4)",
-            background: "var(--surface-muted)",
-            borderRadius: "var(--radius-lg)",
-            border: "1px solid var(--border)",
-            marginBottom: "var(--space-4)",
-          }}
-        >
-          <p style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-            Secret API key
-          </p>
-          <div className="share-url-box" style={{ marginBottom: 0 }}>
-            <span className="share-url-text" style={{ letterSpacing: "0.04em" }}>{demoApiKey}</span>
-            <button className="icon-button" onClick={copyApiKey} style={{ borderRadius: 0, borderLeft: "1px solid var(--border)", minHeight: 42 }}>
-              {apiKeyCopied ? "Copied ✓" : "Reveal & copy"}
-            </button>
-          </div>
-          <p className="field-hint" style={{ marginTop: 10 }}>
-            Keep this secret. Never expose it in client-side code.
+      {/* Hero */}
+      <section className="integrations-hero">
+        <div className="integrations-hero-copy">
+          <p className="eyebrow">Connected systems</p>
+          <h3>Turn Shopper into the hub of your scheduling stack.</h3>
+          <p>
+            Calendar sync, video rooms, internal alerts, webhooks, an iCal feed, and a full REST API — everything needed to make bookings work inside your existing tools.
           </p>
         </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-            gap: "var(--space-3)",
-          }}
-        >
+        <div className="integrations-hero-stats">
           {[
-            { method: "GET", path: "/api/event-types", desc: "List all event types" },
-            { method: "POST", path: "/api/event-types", desc: "Create an event type" },
-            { method: "GET", path: "/api/bookings", desc: "List all bookings" },
-            { method: "GET", path: "/api/summary", desc: "Dashboard summary stats" },
-          ].map((ep) => (
-            <div
-              key={ep.path}
-              style={{
-                padding: "10px 14px",
-                background: "var(--surface-solid)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                display: "flex", flexDirection: "column", gap: 5,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: "0.05em",
-                  padding: "2px 7px", borderRadius: 4,
-                  background: ep.method === "GET" ? "var(--success-bg)" : "var(--accent-soft)",
-                  color: ep.method === "GET" ? "var(--success)" : "var(--accent)",
-                }}>
-                  {ep.method}
-                </span>
-                <code style={{ fontSize: 11.5, fontFamily: "ui-monospace,monospace", color: "var(--text-muted)" }}>
-                  {ep.path}
-                </code>
-              </div>
-              <span style={{ fontSize: 12, color: "var(--text-subtle)" }}>{ep.desc}</span>
+            { label: "Total integrations", value: INTEGRATIONS.length },
+            { label: "Ready now", value: readyCount },
+            { label: "Connected", value: loadingConnections ? "…" : connectedCount },
+            { label: "Coming soon", value: soonCount },
+          ].map((item) => (
+            <div key={item.label} className="integrations-hero-card">
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
             </div>
           ))}
         </div>
+      </section>
 
-        <div className="intg-hint" style={{ marginTop: "var(--space-4)" }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          Pass your key as <code style={{ fontFamily: "ui-monospace,monospace", fontSize: 12 }}>Authorization: Bearer sk_live_...</code> in request headers.
+      {/* iCal feed notice */}
+      {bookingUsername && (
+        <SectionCard title="iCal feed" subtitle="Subscribe to your confirmed bookings in any calendar app.">
+          <div className="booking-url-box" style={{ marginBottom: "var(--space-3)" }}>
+            <code className="booking-url-text">{api.icalUrl(bookingUsername)}</code>
+            <button className="secondary-button" onClick={() => copyValue(api.icalUrl(bookingUsername), "ical")}>
+              {copiedKey === "ical" ? "Copied!" : "Copy URL"}
+            </button>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Use this URL in Google Calendar (Other calendars → From URL), Outlook (Add calendar → From internet), or iPhone (Settings → Calendar → Add account → Other → Add subscribed calendar).
+          </p>
+        </SectionCard>
+      )}
+
+      {/* Connected overview */}
+      {!loadingConnections && connectedCount > 0 && (
+        <SectionCard title="Active connections" subtitle={`${connectedCount} integration${connectedCount !== 1 ? "s" : ""} connected to your account.`}>
+          <div className="integrations-connected-grid">
+            {connectedList.map((integration) => {
+              const isWebhookType = connections[integration.key]?.type === "webhook" || WEBHOOK_KEYS.has(integration.key);
+              return (
+                <div key={integration.key} className="integrations-connected-card">
+                  <IntegrationIcon intKey={integration.key} size={40} />
+                  <div className="integrations-connected-info">
+                    <strong>{integration.name}</strong>
+                    <span>{integration.tagline}</span>
+                  </div>
+                  <div className="integrations-connected-actions">
+                    <span className="integrations-tag success">Active</span>
+                    {isWebhookType && (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        style={{ minHeight: 32, padding: "4px 12px", fontSize: 12.5 }}
+                        onClick={() => handleTestWebhook(integration.key)}
+                        disabled={testing === integration.key}
+                      >
+                        {testing === integration.key ? <><span className="btn-spinner" />Testing…</> : "Test"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="ghost-button danger"
+                      style={{ minHeight: 32, padding: "4px 12px", fontSize: 12.5 }}
+                      onClick={() => handleDisconnect(integration.key)}
+                      disabled={disconnecting === integration.key}
+                    >
+                      {disconnecting === integration.key ? <><span className="btn-spinner" />…</> : "Disconnect"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Integration library */}
+      <SectionCard title="Integration library" subtitle={`${INTEGRATIONS.length} integrations across ${CATEGORY_FILTERS.length - 1} categories.`}>
+        <div className="integrations-library-toolbar">
+          <div className="integrations-filter-row">
+            {CATEGORY_FILTERS.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                className={`integrations-filter-chip ${category === filter.key ? "active" : ""}`}
+                onClick={() => setCategory(filter.key)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+          <div className="integrations-search-wrap">
+            <svg className="integrations-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              className="integrations-search-input"
+              placeholder="Search integrations…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button className="search-clear" onClick={() => setSearch("")} aria-label="Clear">×</button>
+            )}
+          </div>
         </div>
+
+        {filteredIntegrations.length === 0 ? (
+          <div className="chart-empty">No integrations match "{search}".</div>
+        ) : (
+          <div className="integrations-library-grid integrations-library-grid-3">
+            {filteredIntegrations.map((integration) => {
+              const connected = Boolean(connections[integration.key]);
+              const isSoon = integration.status === "soon";
+              const isDisconnecting = disconnecting === integration.key;
+
+              return (
+                <article key={integration.key} className={`integrations-library-card ${connected ? "connected" : ""}`}>
+                  <div className="integrations-library-top">
+                    <div className="integrations-card-header">
+                      <IntegrationIcon intKey={integration.key} size={44} />
+                      <div>
+                        <div className="integrations-library-badges">
+                          {integration.highlight && <span className="integrations-tag warm">{integration.highlight}</span>}
+                          {isSoon && <span className="integrations-tag muted">Coming soon</span>}
+                          {connected && <span className="integrations-tag success">Connected</span>}
+                        </div>
+                        <h4>{integration.name}</h4>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="integrations-library-card-tagline">{integration.tagline}</p>
+                  <p className="integrations-library-description">{integration.description}</p>
+
+                  <div className="integrations-outcome-list">
+                    {integration.outcomes.map((item) => (
+                      <div key={item} className="integrations-outcome-row">
+                        <span className="integrations-outcome-dot" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="integrations-library-footer">
+                    {isSoon ? (
+                      <button type="button" className="secondary-button" style={{ width: "100%", opacity: 0.6 }} disabled>
+                        Coming soon
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={connected ? "ghost-button" : "primary-button"}
+                        style={{ width: "100%" }}
+                        onClick={() => handleCardConnect(integration)}
+                        disabled={isDisconnecting}
+                      >
+                        {isDisconnecting ? <><span className="btn-spinner" />Disconnecting…</> : connected ? "Disconnect" : "Connect"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </SectionCard>
 
-      {/* Webhooks */}
-      <SectionCard title="Webhooks" subtitle="Receive real-time booking events on your own server">
-        <form
-          style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
-          onSubmit={(e) => { e.preventDefault(); setWebhookSaved(true); toast.success("Webhook saved! (demo mode)"); }}
-        >
+      {/* Embed + Webhook side by side */}
+      <div className="integrations-two-col">
+        <SectionCard title="Embed your booking page" subtitle="Put Shopper inside your own site.">
+          <div className="integrations-embed-tabs">
+            {[{ key: "iframe", label: "Inline iframe" }, { key: "floating", label: "Floating widget" }, { key: "popup", label: "Popup button" }].map((t) => (
+              <button key={t.key} type="button" className={`integrations-embed-tab ${embedTab === t.key ? "active" : ""}`} onClick={() => setEmbedTab(t.key)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="integrations-embed-hint">
+            Replace <code className="integrations-inline-code">your-event-slug</code> with your real event URL slug from the Dashboard.
+          </div>
+          <div className="integrations-code-card">
+            <pre>{embedCodes[embedTab]}</pre>
+          </div>
+          <div className="button-row" style={{ marginTop: "var(--space-4)" }}>
+            <button type="button" className="primary-button" onClick={() => copyValue(embedCodes[embedTab], "embed")}>
+              {copiedKey === "embed" ? "Copied!" : "Copy code"}
+            </button>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Webhook endpoint" subtitle="Receive real-time booking events on your server.">
           <label>
             Endpoint URL
             <input
               type="url"
-              placeholder="https://your-server.com/hooks/shopper"
               value={webhookUrl}
-              onChange={(e) => { setWebhookUrl(e.target.value); setWebhookSaved(false); }}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+              placeholder="https://your-domain.com/hooks/shopper"
             />
-            <p className="field-hint">We'll POST a JSON payload to this URL for every selected event.</p>
           </label>
-          <div className="button-row">
-            <button type="submit" className="primary-button" disabled={!webhookUrl.trim()}>
-              {webhookSaved ? "Saved ✓" : "Save webhook"}
-            </button>
-            {webhookSaved && (
-              <button type="button" className="secondary-button" onClick={() => toast.success("Test ping sent!")}>
-                Send test ping
-              </button>
-            )}
-          </div>
-        </form>
 
-        <div style={{ marginTop: "var(--space-5)" }}>
-          <p style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
-            Events dispatched
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "var(--space-2)" }}>
-            {[
-              { event: "booking.confirmed", desc: "New booking made" },
-              { event: "booking.cancelled", desc: "Booking cancelled" },
-              { event: "booking.rescheduled", desc: "Time changed" },
-              { event: "booking.reminder", desc: "Before meeting" },
-            ].map((e) => (
-              <div
-                key={e.event}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "9px 14px",
-                  background: "var(--surface-muted)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                }}
-              >
-                <span style={{
-                  width: 7, height: 7, borderRadius: "50%",
-                  background: webhookSaved ? "var(--success)" : "var(--border-strong)",
-                  flexShrink: 0,
-                }} />
-                <div>
-                  <code style={{ fontSize: 11.5, fontFamily: "ui-monospace,monospace", color: "var(--accent)", display: "block" }}>{e.event}</code>
-                  <span style={{ fontSize: 11.5, color: "var(--text-subtle)" }}>{e.desc}</span>
+          <label style={{ marginTop: "var(--space-3)" }}>
+            Message format
+            <select value={webhookFormat} onChange={(e) => setWebhookFormat(e.target.value)}>
+              {WEBHOOK_FORMATS.map((f) => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="integrations-webhook-events">
+            <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>Subscribe to events</p>
+            {WEBHOOK_EVENTS.map((ev) => (
+              <label key={ev.key} className="webhook-event-row">
+                <input
+                  type="checkbox"
+                  checked={webhookEvents.has(ev.key)}
+                  onChange={() => toggleWebhookEvent(ev.key)}
+                />
+                <div className="webhook-event-copy">
+                  <strong>{ev.label}</strong>
+                  <span>{ev.desc}</span>
                 </div>
-              </div>
+              </label>
             ))}
           </div>
+
+          <div className="button-row" style={{ marginTop: "var(--space-4)" }}>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={savingWebhook || !webhookUrl.trim() || webhookEvents.size === 0}
+              onClick={handleSaveWebhook}
+            >
+              {savingWebhook ? <><span className="btn-spinner" />Saving…</> : connections["generic_webhook"] ? "Update webhook" : "Save webhook"}
+            </button>
+            {connections["generic_webhook"] && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => handleTestWebhook("generic_webhook")}
+                disabled={testing === "generic_webhook"}
+              >
+                {testing === "generic_webhook" ? <><span className="btn-spinner" />Testing…</> : "Send test"}
+              </button>
+            )}
+            <button type="button" className="secondary-button" onClick={() => copyValue(webhookPayloadExample, "webhook")}>
+              {copiedKey === "webhook" ? "Copied!" : "Sample payload"}
+            </button>
+          </div>
+
+          <div className="integrations-code-card compact" style={{ marginTop: "var(--space-4)" }}>
+            <pre>{webhookPayloadExample}</pre>
+          </div>
+        </SectionCard>
+      </div>
+
+      {/* API Key Management */}
+      <SectionCard title="API key" subtitle="Authenticate direct requests to the Shopper REST API.">
+        <div className="integrations-apikey-section">
+          {loadingKeys ? (
+            <div className="integrations-apikey-empty">
+              <div className="integrations-apikey-icon"><span className="btn-spinner" style={{ width: 24, height: 24 }} /></div>
+              <div><p>Loading…</p></div>
+            </div>
+          ) : displayKey || existingKeyPrefix ? (
+            <>
+              <div className="integrations-apikey-row">
+                <code className="integrations-apikey-value">
+                  {displayKey && showApiKey
+                    ? displayKey
+                    : (displayPrefix || "sk_live_") + "••••••••••••••••••••••••"}
+                </code>
+                <div className="integrations-apikey-actions">
+                  {displayKey && (
+                    <button type="button" className="secondary-button" style={{ minHeight: 36, padding: "6px 14px", fontSize: 13 }} onClick={() => setShowApiKey((v) => !v)}>
+                      {showApiKey ? "Hide" : "Reveal"}
+                    </button>
+                  )}
+                  {displayKey && showApiKey && (
+                    <button type="button" className="secondary-button" style={{ minHeight: 36, padding: "6px 14px", fontSize: 13 }} onClick={() => copyValue(displayKey, "apikey")}>
+                      {copiedKey === "apikey" ? "Copied!" : "Copy"}
+                    </button>
+                  )}
+                  <button type="button" className="ghost-button danger" style={{ minHeight: 36, padding: "6px 14px", fontSize: 13 }} onClick={handleRevokeApiKey} disabled={revokingKey}>
+                    {revokingKey ? <><span className="btn-spinner" />Revoking…</> : "Revoke"}
+                  </button>
+                </div>
+              </div>
+              {displayKey && <p className="integrations-apikey-warning">Copy your key now. For security, it will not be shown in full after you leave this page.</p>}
+              <div className="integrations-code-card compact" style={{ marginTop: "var(--space-4)" }}>
+                <pre>{`curl https://shopper-backend-2n4n.onrender.com/api/bookings \\\n  -H "Authorization: Bearer ${displayKey && showApiKey ? displayKey : (displayPrefix || "sk_live_") + "••••••••••••••••••••••••"}" \\\n  -H "Content-Type: application/json"`}</pre>
+              </div>
+            </>
+          ) : (
+            <div className="integrations-apikey-empty">
+              <div className="integrations-apikey-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
+                </svg>
+              </div>
+              <div>
+                <strong>No API key</strong>
+                <p>Generate a key to authenticate direct requests to the Shopper REST API.</p>
+              </div>
+              <button type="button" className="primary-button" onClick={handleGenerateApiKey} disabled={generatingKey}>
+                {generatingKey ? <><span className="btn-spinner" />Generating…</> : "Generate API key"}
+              </button>
+            </div>
+          )}
         </div>
       </SectionCard>
+
+      {/* API Reference */}
+      <SectionCard title="API reference" subtitle={`${API_ENDPOINTS.length} endpoints — REST JSON API with Bearer token auth.`}>
+        <input
+          className="search-input"
+          style={{ width: "100%", marginBottom: "var(--space-4)" }}
+          placeholder="Filter endpoints by path or description…"
+          value={apiSearch}
+          onChange={(e) => setApiSearch(e.target.value)}
+        />
+        <div className="integrations-api-grid integrations-api-grid-full">
+          {filteredApiEndpoints.map((item) => (
+            <div key={`${item.method}-${item.path}`} className="integrations-api-card">
+              <div className="integrations-api-header">
+                <span className={`integrations-method ${methodClass(item.method)}`}>{item.method}</span>
+                <code>{item.path}</code>
+              </div>
+              <p>{item.detail}</p>
+            </div>
+          ))}
+        </div>
+        <div className="integrations-code-card compact" style={{ marginTop: "var(--space-4)" }}>
+          <pre>{`# Authentication\ncurl https://shopper-backend-2n4n.onrender.com/api/bookings \\\n  -H "Authorization: Bearer <your_jwt_or_api_key>"\n\n# All responses return JSON.\n# Errors include a "detail" field with a human-readable message.`}</pre>
+        </div>
+      </SectionCard>
+
     </div>
   );
 }

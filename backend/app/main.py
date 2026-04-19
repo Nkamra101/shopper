@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import settings
-from .database import get_db, ensure_indexes
-from .routers import auth, availability, blockouts, bookings, event_types, otp, public
+from .database import ensure_indexes, get_db
+from .routers import auth, availability, blockouts, bookings, calendar, event_types, integrations, otp, public, workflows
 from .seed import seed_database
 
 logging.basicConfig(
@@ -35,10 +35,12 @@ async def lifespan(_: FastAPI):
         except Exception:
             logger.exception("Seeding failed")
 
-    if settings.smtp_configured:
+    if settings.email_delivery_mode == "smtp":
         logger.info("SMTP configured: %s at %s", settings.SMTP_USER, settings.SMTP_HOST)
+    elif settings.email_delivery_mode == "console":
+        logger.warning("SMTP not configured. Using console email fallback in %s.", settings.APP_ENV)
     else:
-        logger.warning("SMTP not configured — email delivery disabled.")
+        logger.warning("SMTP not configured and console fallback disabled. Email delivery unavailable.")
 
     yield
     logger.info("Shutting down %s", settings.APP_NAME)
@@ -81,7 +83,12 @@ def health_check():
     except Exception:
         logger.exception("MongoDB health check failed")
         db_ok = False
-    payload = {"status": "ok" if db_ok else "degraded", "database": "up" if db_ok else "down"}
+
+    payload = {
+        "status": "ok" if db_ok else "degraded",
+        "database": "up" if db_ok else "down",
+        "email_mode": settings.email_delivery_mode,
+    }
     return JSONResponse(status_code=200 if db_ok else 503, content=payload)
 
 
@@ -92,3 +99,6 @@ app.include_router(bookings.router)
 app.include_router(public.router)
 app.include_router(blockouts.router)
 app.include_router(otp.router)
+app.include_router(integrations.router)
+app.include_router(calendar.router)
+app.include_router(workflows.router)

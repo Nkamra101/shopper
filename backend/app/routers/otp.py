@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/public/otp", tags=["otp"])
 
 @router.post("/request", response_model=OtpRequestResponse)
 def request_code(payload: OtpRequest, db: Database = Depends(get_db)):
-    if not settings.smtp_configured:
+    if not settings.email_enabled:
         raise HTTPException(
             status_code=503,
             detail="Email service is not configured. Please contact the organiser.",
@@ -30,6 +30,7 @@ def request_code(payload: OtpRequest, db: Database = Depends(get_db)):
         sent=True,
         expires_in_seconds=result.expires_in_seconds,
         resend_after_seconds=result.resend_after_seconds,
+        dev_code=result.dev_code,
     )
 
 

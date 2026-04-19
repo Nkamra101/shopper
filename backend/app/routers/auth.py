@@ -1,6 +1,8 @@
 """Authentication routes: password login, Google OAuth2, JWT token management."""
 
+import hashlib
 import logging
+import secrets
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 
@@ -97,6 +99,24 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ProfileUpdate(BaseModel):
+    name: str = ""
+    bio: str = ""
+    title: str = ""
+    company: str = ""
+    website: str = ""
+    twitter: str = ""
+    linkedin: str = ""
+    avatar_color: str = "#d06132"
+    welcome_message: str = ""
+    booking_username: str = ""
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 # ------------------------------------------------------------------ routes --
@@ -208,6 +228,15 @@ def get_current_user(token: str, db: Database) -> dict:
         detail="Invalid or expired token.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # API key auth (sk_live_ prefix)
+    if token.startswith("sk_live_"):
+        key_hash = hashlib.sha256(token.encode()).hexdigest()
+        user = db.users.find_one({"api_keys.hashed": key_hash})
+        if not user or not user.get("is_active"):
+            raise credentials_exc
+        return user
+
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str | None = payload.get("sub")
@@ -238,4 +267,129 @@ def me(authorization: str = Header(default=""), db: Database = Depends(get_db)):
         "avatar_url": user.get("avatar_url", ""),
         "oauth_provider": user.get("oauth_provider"),
         "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
+        # extended profile fields
+        "bio": user.get("bio", ""),
+        "title": user.get("title", ""),
+        "company": user.get("company", ""),
+        "website": user.get("website", ""),
+        "twitter": user.get("twitter", ""),
+        "linkedin": user.get("linkedin", ""),
+        "avatar_color": user.get("avatar_color", "#d06132"),
+        "welcome_message": user.get("welcome_message", ""),
+        "booking_username": user.get("booking_username", ""),
     }
+
+
+@router.put("/profile", summary="Update the current user's profile")
+def update_profile(
+    payload: ProfileUpdate,
+    authorization: str = Header(default=""),
+    db: Database = Depends(get_db),
+):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token.")
+    user = get_current_user(authorization[len("Bearer "):], db)
+
+    # Ensure booking_username is unique if provided
+    username = payload.booking_username.strip().lower()
+    if username:
+        import re
+        if len(username) < 2 or not re.match(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$", username):
+            raise HTTPException(status_code=422, detail="Booking username must be at least 2 characters, start and end with a letter or number, and may only contain lowercase letters, numbers, and hyphens.")
+        existing = db.users.find_one({"booking_username": username, "_id": {"$ne": user["_id"]}})
+        if existing:
+            raise HTTPException(status_code=409, detail="That booking username is already taken.")
+
+    db.users.update_one({"_id": user["_id"]}, {"$set": {
+        "name": payload.name.strip() or user.get("name", ""),
+        "bio": payload.bio,
+        "title": payload.title,
+        "company": payload.company,
+        "website": payload.website,
+        "twitter": payload.twitter,
+        "linkedin": payload.linkedin,
+        "avatar_color": payload.avatar_color or "#d06132",
+        "welcome_message": payload.welcome_message,
+        "booking_username": username,
+    }})
+    updated = db.users.find_one({"_id": user["_id"]})
+    return {
+        "id": str(updated["_id"]),
+        "email": updated["email"],
+        "name": updated.get("name", ""),
+        "avatar_url": updated.get("avatar_url", ""),
+        "bio": updated.get("bio", ""),
+        "title": updated.get("title", ""),
+        "company": updated.get("company", ""),
+        "website": updated.get("website", ""),
+        "twitter": updated.get("twitter", ""),
+        "linkedin": updated.get("linkedin", ""),
+        "avatar_color": updated.get("avatar_color", "#d06132"),
+        "welcome_message": updated.get("welcome_message", ""),
+        "booking_username": updated.get("booking_username", ""),
+    }
+
+
+@router.put("/change-password", summary="Change password for email-registered users")
+def change_password(
+    payload: ChangePasswordRequest,
+    authorization: str = Header(default=""),
+    db: Database = Depends(get_db),
+):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token.")
+    user = get_current_user(authorization[len("Bearer "):], db)
+
+    if not user.get("hashed_password"):
+        raise HTTPException(status_code=400, detail="Password change is only available for email/password accounts.")
+    if not _verify_password(payload.current_password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect.")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=422, detail="New password must be at least 8 characters.")
+
+    db.users.update_one({"_id": user["_id"]}, {"$set": {"hashed_password": _hash_password(payload.new_password)}})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- API keys --
+
+@router.get("/api-keys", summary="List API keys (prefix only)")
+def list_api_keys(authorization: str = Header(default=""), db: Database = Depends(get_db)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token.")
+    user = get_current_user(authorization[len("Bearer "):], db)
+    keys = user.get("api_keys") or []
+    return [
+        {
+            "prefix": k["prefix"],
+            "created_at": k["created_at"].isoformat() if isinstance(k.get("created_at"), datetime) else k.get("created_at"),
+        }
+        for k in keys
+    ]
+
+
+@router.post("/api-keys", summary="Generate a new API key")
+def generate_api_key(authorization: str = Header(default=""), db: Database = Depends(get_db)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token.")
+    user = get_current_user(authorization[len("Bearer "):], db)
+
+    raw = "sk_live_" + secrets.token_urlsafe(32)
+    prefix = raw[:16]
+    key_hash = hashlib.sha256(raw.encode()).hexdigest()
+    now = _utcnow()
+
+    db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"api_keys": [{"prefix": prefix, "hashed": key_hash, "created_at": now}]}},
+    )
+    return {"key": raw, "prefix": prefix, "created_at": now.isoformat()}
+
+
+@router.delete("/api-keys", summary="Revoke all API keys")
+def revoke_api_keys(authorization: str = Header(default=""), db: Database = Depends(get_db)):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token.")
+    user = get_current_user(authorization[len("Bearer "):], db)
+    db.users.update_one({"_id": user["_id"]}, {"$set": {"api_keys": []}})
+    return {"ok": True}

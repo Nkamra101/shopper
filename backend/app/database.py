@@ -26,6 +26,8 @@ def ensure_indexes(db: Database) -> None:
     db.email_otps.create_index([("created_at", DESCENDING)])
     db.verification_tokens.create_index("token", unique=True)
     db.verification_tokens.create_index("email")
+    db.integrations.create_index([("user_id", ASCENDING), ("key", ASCENDING)], unique=True)
+    db.workflows.create_index([("created_at", ASCENDING)])
 
 
 # ------------------------------------------------------------------ helpers --

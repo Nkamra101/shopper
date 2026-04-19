@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import SectionCard from "../components/SectionCard";
 import EmptyState from "../components/EmptyState";
+import SectionCard from "../components/SectionCard";
 import { SkeletonList, SkeletonStats } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { api } from "../services/api";
@@ -21,15 +21,198 @@ const emptyForm = {
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PREDEFINED_COLORS = [
-  "#6366f1","#8b5cf6","#ec4899","#ef4444",
-  "#f97316","#f59e0b","#10b981","#3b82f6","#0f172a","#64748b",
+  "#6366f1", "#8b5cf6", "#ec4899", "#ef4444",
+  "#f97316", "#f59e0b", "#10b981", "#3b82f6", "#0f172a", "#64748b",
 ];
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+
+function sanitizeSlug(value) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function Icon({ name, size = 16, strokeWidth = 2.2 }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true",
+  };
+
+  switch (name) {
+    case "calendar":
+      return (
+        <svg {...common}>
+          <path d="M8 2v4M16 2v4M3 10h18" />
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg {...common}>
+          <path d="M4 19h16" />
+          <path d="M7 16v-5" />
+          <path d="M12 16V8" />
+          <path d="M17 16v-9" />
+        </svg>
+      );
+    case "link":
+      return (
+        <svg {...common}>
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+        </svg>
+      );
+    case "video":
+      return (
+        <svg {...common}>
+          <rect x="3" y="6" width="13" height="12" rx="2" />
+          <path d="m16 10 5-3v10l-5-3z" />
+        </svg>
+      );
+    case "phone":
+      return (
+        <svg {...common}>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72l.34 2.74a2 2 0 0 1-.57 1.7l-1.2 1.2a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 1.7-.57l2.74.34A2 2 0 0 1 22 16.92z" />
+        </svg>
+      );
+    case "pin":
+      return (
+        <svg {...common}>
+          <path d="M12 21s6-5.33 6-11a6 6 0 1 0-12 0c0 5.67 6 11 6 11z" />
+          <circle cx="12" cy="10" r="2.5" />
+        </svg>
+      );
+    case "edit":
+      return (
+        <svg {...common}>
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+      );
+    case "copy":
+      return (
+        <svg {...common}>
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      );
+    case "share":
+      return (
+        <svg {...common}>
+          <circle cx="18" cy="5" r="3" />
+          <circle cx="6" cy="12" r="3" />
+          <circle cx="18" cy="19" r="3" />
+          <path d="M8.59 13.51 15.42 17.49" />
+          <path d="M15.41 6.51 8.59 10.49" />
+        </svg>
+      );
+    case "external":
+      return (
+        <svg {...common}>
+          <path d="M14 3h7v7" />
+          <path d="M10 14 21 3" />
+          <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+        </svg>
+      );
+    case "duplicate":
+      return (
+        <svg {...common}>
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      );
+    case "pause":
+      return (
+        <svg {...common}>
+          <rect x="7" y="5" width="3" height="14" />
+          <rect x="14" y="5" width="3" height="14" />
+        </svg>
+      );
+    case "play":
+      return (
+        <svg {...common}>
+          <path d="m8 5 11 7-11 7z" />
+        </svg>
+      );
+    case "trash":
+      return (
+        <svg {...common}>
+          <path d="M3 6h18" />
+          <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+          <path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+          <path d="M10 11v6M14 11v6" />
+        </svg>
+      );
+    case "check":
+      return (
+        <svg {...common}>
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      );
+    case "mail":
+      return (
+        <svg {...common}>
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="m4 7 8 6 8-6" />
+        </svg>
+      );
+    case "code":
+      return (
+        <svg {...common}>
+          <path d="m8 9-4 3 4 3" />
+          <path d="m16 9 4 3-4 3" />
+          <path d="m14 5-4 14" />
+        </svg>
+      );
+    case "close":
+      return (
+        <svg {...common}>
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </svg>
+      );
+    case "spark":
+      return (
+        <svg {...common}>
+          <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z" />
+          <path d="M5 19h.01M19 19h.01" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...common}>
+          <path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6z" />
+          <path d="m9.5 12 1.8 1.8 3.7-3.8" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 const LOCATION_TYPES = [
-  { value: "video", label: "Video call", icon: "📹" },
-  { value: "phone", label: "Phone call", icon: "📞" },
-  { value: "in_person", label: "In person", icon: "📍" },
-  { value: "custom", label: "Custom", icon: "✏️" },
+  { value: "video", label: "Video call", icon: "video" },
+  { value: "phone", label: "Phone call", icon: "phone" },
+  { value: "in_person", label: "In person", icon: "pin" },
+  { value: "custom", label: "Custom instructions", icon: "edit" },
 ];
 
 function validate(form) {
@@ -47,98 +230,106 @@ function validate(form) {
 function ShareModal({ item, onClose }) {
   const toast = useToast();
   const bookingUrl = `${window.location.origin}/book/${item.url_slug}`;
-  const [copied, setCopied] = useState(false);
+  const embedCode = `<iframe src="${bookingUrl}" width="100%" height="700" frameborder="0" style="border-radius:16px"></iframe>`;
+  const [copied, setCopied] = useState("");
 
-  function copyUrl() {
-    navigator.clipboard.writeText(bookingUrl);
-    setCopied(true);
-    toast.success("Link copied!");
-    setTimeout(() => setCopied(false), 2000);
+  function copyValue(value, key, message) {
+    navigator.clipboard.writeText(value);
+    setCopied(key);
+    toast.success(message);
+    window.setTimeout(() => setCopied(""), 1800);
   }
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  const shareActions = [
+    {
+      key: "copy",
+      label: copied === "copy" ? "Link copied" : "Copy link",
+      icon: "copy",
+      onClick: () => copyValue(bookingUrl, "copy", "Booking link copied."),
+    },
+    {
+      key: "email",
+      label: "Email",
+      icon: "mail",
+      href: `mailto:?subject=Schedule time&body=${encodeURIComponent(`Choose a time here: ${bookingUrl}`)}`,
+    },
+    {
+      key: "linkedin",
+      label: "LinkedIn",
+      icon: "share",
+      href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(bookingUrl)}`,
+    },
+    {
+      key: "preview",
+      label: "Open page",
+      icon: "external",
+      href: bookingUrl,
+    },
+  ];
+
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div className="modal-panel" style={{ maxWidth: 440 }}>
         <header className="modal-header">
           <div>
             <p className="eyebrow">Share</p>
             <h3>{item.title}</h3>
-            <p className="modal-subtitle">Share your booking link with anyone</p>
+            <p className="modal-subtitle">Send your booking page anywhere you collect requests.</p>
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            <Icon name="close" size={16} />
+          </button>
         </header>
+
         <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-          {/* URL copy */}
           <div>
             <p className="modal-label">Booking link</p>
             <div className="share-url-box">
               <span className="share-url-text">{bookingUrl}</span>
-              <button className="primary-button" style={{ minHeight: 36, padding: "0 16px", fontSize: 13 }} onClick={copyUrl}>
-                {copied ? "Copied ✓" : "Copy"}
+              <button className="primary-button" style={{ minHeight: 36, padding: "0 16px", fontSize: 13 }} onClick={() => copyValue(bookingUrl, "copy", "Booking link copied.")}>
+                {copied === "copy" ? "Copied" : "Copy"}
               </button>
             </div>
           </div>
 
-          {/* Social share buttons */}
           <div>
-            <p className="modal-label">Share via</p>
+            <p className="modal-label">Quick actions</p>
             <div className="share-social-row">
-              {[
-                {
-                  label: "Twitter / X",
-                  color: "#000",
-                  href: `https://twitter.com/intent/tweet?text=Book%20a%20meeting%20with%20me%3A%20${encodeURIComponent(bookingUrl)}`,
-                  icon: "𝕏",
-                },
-                {
-                  label: "LinkedIn",
-                  color: "#0a66c2",
-                  href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(bookingUrl)}`,
-                  icon: "in",
-                },
-                {
-                  label: "WhatsApp",
-                  color: "#25d366",
-                  href: `https://wa.me/?text=${encodeURIComponent("Book a meeting with me: " + bookingUrl)}`,
-                  icon: "💬",
-                },
-                {
-                  label: "Email",
-                  color: "var(--accent)",
-                  href: `mailto:?subject=Book%20a%20meeting&body=${encodeURIComponent("Book a time with me: " + bookingUrl)}`,
-                  icon: "✉️",
-                },
-              ].map((s) => (
-                <a
-                  key={s.label}
-                  href={s.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="share-social-btn"
-                  style={{ "--share-color": s.color }}
-                >
-                  <span className="share-social-icon">{s.icon}</span>
-                  <span>{s.label}</span>
-                </a>
+              {shareActions.map((action) => (
+                action.href ? (
+                  <a key={action.key} href={action.href} target="_blank" rel="noreferrer" className="share-social-btn">
+                    <span className="share-social-icon"><Icon name={action.icon} size={15} /></span>
+                    <span>{action.label}</span>
+                  </a>
+                ) : (
+                  <button key={action.key} type="button" className="share-social-btn" onClick={action.onClick}>
+                    <span className="share-social-icon"><Icon name={action.icon} size={15} /></span>
+                    <span>{action.label}</span>
+                  </button>
+                )
               ))}
             </div>
           </div>
 
-          {/* Embed snippet */}
           <div>
             <p className="modal-label">Embed on your website</p>
             <div className="code-block" style={{ maxHeight: 100 }}>
-              <pre style={{ margin: 0, fontSize: 12, padding: "12px 16px", overflowX: "auto" }}>{`<iframe src="${bookingUrl}" width="100%" height="700" frameborder="0" style="border-radius:16px"></iframe>`}</pre>
-              <button className="code-copy-btn" onClick={() => { navigator.clipboard.writeText(`<iframe src="${bookingUrl}" width="100%" height="700" frameborder="0" style="border-radius:16px"></iframe>`); toast.success("Embed code copied!"); }}>Copy</button>
+              <pre style={{ margin: 0, fontSize: 12, padding: "12px 16px", overflowX: "auto" }}>{embedCode}</pre>
+              <button className="code-copy-btn" onClick={() => copyValue(embedCode, "embed", "Embed code copied.")}>
+                {copied === "embed" ? "Copied" : "Copy"}
+              </button>
             </div>
           </div>
         </div>
+
         <footer className="modal-footer">
           <button className="secondary-button" onClick={onClose}>Close</button>
         </footer>
@@ -159,6 +350,7 @@ export default function DashboardPage() {
   const [copiedSlug, setCopiedSlug] = useState(null);
   const [shareTarget, setShareTarget] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [slugTouched, setSlugTouched] = useState(false);
 
   const errors = useMemo(() => validate(form), [form]);
   const isValid = Object.keys(errors).length === 0;
@@ -176,12 +368,36 @@ export default function DashboardPage() {
     }
   }
 
-  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => {
+    loadDashboard();
+  }, []);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  function resetEditor() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setTouched({});
+    setShowAdvanced(false);
+    setSlugTouched(false);
+  }
+
+  function handleTitleChange(value) {
+    setForm((current) => ({
+      ...current,
+      title: value,
+      url_slug: slugTouched ? current.url_slug : sanitizeSlug(value),
+    }));
+  }
+
+  function handleSlugChange(value) {
+    setSlugTouched(true);
+    setForm((current) => ({ ...current, url_slug: sanitizeSlug(value) }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
     setTouched({ title: true, url_slug: true, duration: true });
     if (!isValid) return;
+
     setSubmitting(true);
     try {
       if (editingId) {
@@ -189,12 +405,9 @@ export default function DashboardPage() {
         toast.success("Event type updated.");
       } else {
         await api.createEventType(form);
-        toast.success("Event type created!");
+        toast.success("Event type created.");
       }
-      setForm(emptyForm);
-      setEditingId(null);
-      setTouched({});
-      setShowAdvanced(false);
+      resetEditor();
       loadDashboard();
     } catch (error) {
       toast.error(error.message || "Could not save event type.");
@@ -220,15 +433,16 @@ export default function DashboardPage() {
     });
     setTouched({});
     setShowAdvanced(false);
+    setSlugTouched(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleDelete(id) {
-    if (!window.confirm("Delete this event type? All its bookings will be permanently removed.")) return;
+    if (!window.confirm("Delete this event type? Related bookings will also be removed.")) return;
     try {
       await api.deleteEventType(id);
       toast.success("Event type deleted.");
-      if (editingId === id) { setEditingId(null); setForm(emptyForm); }
+      if (editingId === id) resetEditor();
       loadDashboard();
     } catch (error) {
       toast.error(error.message || "Could not delete event type.");
@@ -241,14 +455,14 @@ export default function DashboardPage() {
       toast.success(item.is_active ? "Event type paused." : "Event type activated.");
       loadDashboard();
     } catch (error) {
-      toast.error(error.message || "Could not toggle event type.");
+      toast.error(error.message || "Could not change status.");
     }
   }
 
   async function handleDuplicate(item) {
     try {
       await api.duplicateEventType(item.id);
-      toast.success("Event type duplicated (inactive — review before publishing).");
+      toast.success("Event type duplicated. Review it before publishing.");
       loadDashboard();
     } catch (error) {
       toast.error(error.message || "Could not duplicate event type.");
@@ -258,166 +472,180 @@ export default function DashboardPage() {
   function copyLink(slug) {
     navigator.clipboard.writeText(`${window.location.origin}/book/${slug}`);
     setCopiedSlug(slug);
-    toast.success("Booking link copied!");
-    setTimeout(() => setCopiedSlug(null), 2000);
+    toast.success("Booking link copied.");
+    window.setTimeout(() => setCopiedSlug(null), 1800);
   }
 
-  function showError(field) { return touched[field] && errors[field]; }
+  function showError(field) {
+    return touched[field] && errors[field];
+  }
 
   const stats = [
-    { label: "Event Types", value: summary?.event_types_count ?? "—", icon: "📋", color: "var(--accent)" },
-    { label: "Upcoming", value: summary?.upcoming_bookings_count ?? "—", icon: "📅", color: "var(--success)" },
-    { label: "This Week", value: summary?.this_week_count ?? "—", icon: "📆", color: "#06b6d4" },
-    { label: "All Time", value: summary?.total_bookings_count ?? "—", icon: "📊", color: "#f59e0b" },
+    { label: "Event types", value: summary?.event_types_count ?? "-", icon: "calendar", color: "var(--accent)" },
+    { label: "Upcoming", value: summary?.upcoming_bookings_count ?? "-", icon: "clock", color: "var(--success)" },
+    { label: "This week", value: summary?.this_week_count ?? "-", icon: "spark", color: "#0ea5e9" },
+    { label: "All bookings", value: summary?.total_bookings_count ?? "-", icon: "chart", color: "#f59e0b" },
   ];
 
   return (
     <div className="page-grid">
       <div className="stack">
-        {/* Stats */}
-        {loading && !summary ? <SkeletonStats /> : (
+        {loading && !summary ? (
+          <SkeletonStats />
+        ) : (
           <div className="stats-grid four-col">
-            {stats.map((s) => (
-              <div key={s.label} className="stat-card">
-                <div className="stat-emoji">{s.icon}</div>
-                <strong style={{ color: s.color }}>{s.value}</strong>
-                <span>{s.label}</span>
+            {stats.map((item) => (
+              <div key={item.label} className="stat-card">
+                <div className="stat-emoji"><Icon name={item.icon} size={18} /></div>
+                <strong style={{ color: item.color }}>{item.value}</strong>
+                <span>{item.label}</span>
               </div>
             ))}
           </div>
         )}
 
-        {/* Event type list */}
         <SectionCard
           title="Your event types"
-          subtitle="Shareable booking links for your guests."
-          action={
-            <span className="section-count-badge">{eventTypes.length} types</span>
-          }
+          subtitle="Manage the booking pages guests can access."
+          action={<span className="section-count-badge">{eventTypes.length} total</span>}
         >
-          {loading ? <SkeletonList count={3} /> : eventTypes.length === 0 ? (
+          {loading ? (
+            <SkeletonList count={3} />
+          ) : eventTypes.length === 0 ? (
             <EmptyState
               title="No event types yet"
-              description="Create your first event type to get a shareable booking link."
+              description="Create your first event type to publish a booking page and start collecting reservations."
+              action={
+                <button type="button" className="primary-button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+                  Create event type
+                </button>
+              }
             />
           ) : (
             <div className="card-list">
-              {eventTypes.map((item) => (
-                <article
-                  key={item.id}
-                  className={`event-card ${!item.is_active ? "event-card-inactive" : ""}`}
-                  style={{ "--event-accent": item.accent_color }}
-                >
-                  <div className="event-card-top">
-                    <div className="event-color-swatch" style={{ background: item.accent_color }} />
-                    <div style={{ flex: 1 }}>
-                      <div className="event-title-row">
-                        <h4>{item.title}</h4>
-                        {!item.is_active && <span className="event-inactive-badge">Paused</span>}
+              {eventTypes.map((item) => {
+                const locationType = LOCATION_TYPES.find((entry) => entry.value === item.location_type) ?? LOCATION_TYPES[0];
+
+                return (
+                  <article key={item.id} className={`event-card ${!item.is_active ? "event-card-inactive" : ""}`} style={{ "--event-accent": item.accent_color }}>
+                    <div className="event-card-top">
+                      <div className="event-color-swatch" style={{ background: item.accent_color }} />
+                      <div style={{ flex: 1 }}>
+                        <div className="event-title-row">
+                          <h4>{item.title}</h4>
+                          {!item.is_active ? <span className="event-inactive-badge">Paused</span> : null}
+                        </div>
+                        <p>{item.description || <em style={{ opacity: 0.5 }}>No description added yet.</em>}</p>
                       </div>
-                      <p>{item.description || <em style={{ opacity: 0.45 }}>No description</em>}</p>
                     </div>
-                  </div>
 
-                  <div className="event-meta">
-                    <span className="event-meta-chip">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      {item.duration} min
-                    </span>
-                    {item.buffer_minutes > 0 && (
-                      <span className="event-meta-chip">+{item.buffer_minutes}m buffer</span>
-                    )}
-                    {item.location_type && (
+                    <div className="event-meta">
                       <span className="event-meta-chip">
-                        {LOCATION_TYPES.find(l => l.value === item.location_type)?.icon} {LOCATION_TYPES.find(l => l.value === item.location_type)?.label}
+                        <Icon name="clock" size={12} strokeWidth={2.4} />
+                        {item.duration} min
                       </span>
-                    )}
-                    <span className="event-meta-chip slug-chip">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                      /book/{item.url_slug}
-                    </span>
-                  </div>
-
-                  <div className="event-card-actions">
-                    <button
-                      type="button"
-                      className="icon-button copy-button"
-                      onClick={() => copyLink(item.url_slug)}
-                    >
-                      {copiedSlug === item.url_slug
-                        ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Copied!</>
-                        : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy link</>
-                      }
-                    </button>
-                    <button type="button" className="icon-button" onClick={() => setShareTarget(item)}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                      Share
-                    </button>
-                    <a className="icon-button" href={`/book/${item.url_slug}`} target="_blank" rel="noreferrer">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                      Preview
-                    </a>
-                    <div className="event-card-actions-right">
-                      <button type="button" className="icon-button" title="Duplicate" onClick={() => handleDuplicate(item)}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Duplicate
-                      </button>
-                      <button type="button" className="icon-button" title={item.is_active ? "Pause" : "Activate"} onClick={() => handleToggle(item)}>
-                        {item.is_active
-                          ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause</>
-                          : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Activate</>
-                        }
-                      </button>
-                      <button type="button" className="icon-button edit-button" onClick={() => handleEdit(item)}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        Edit
-                      </button>
-                      <button type="button" className="icon-button danger-button" onClick={() => handleDelete(item.id)}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                        Delete
-                      </button>
+                      {item.buffer_minutes > 0 ? (
+                        <span className="event-meta-chip">
+                          <Icon name="spark" size={12} strokeWidth={2.4} />
+                          {item.buffer_minutes} min buffer
+                        </span>
+                      ) : null}
+                      <span className="event-meta-chip">
+                        <Icon name={locationType.icon} size={12} strokeWidth={2.4} />
+                        {locationType.label}
+                      </span>
+                      <span className="event-meta-chip slug-chip">
+                        <Icon name="link" size={12} strokeWidth={2.4} />
+                        /book/{item.url_slug}
+                      </span>
                     </div>
-                  </div>
-                </article>
-              ))}
+
+                    <div className="event-card-actions">
+                      <button type="button" className="icon-button copy-button" onClick={() => copyLink(item.url_slug)}>
+                        {copiedSlug === item.url_slug ? (
+                          <>
+                            <Icon name="check" size={13} />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Icon name="copy" size={13} />
+                            Copy link
+                          </>
+                        )}
+                      </button>
+
+                      <button type="button" className="icon-button" onClick={() => setShareTarget(item)}>
+                        <Icon name="share" size={13} />
+                        Share
+                      </button>
+
+                      <a className="icon-button" href={`/book/${item.url_slug}`} target="_blank" rel="noreferrer">
+                        <Icon name="external" size={13} />
+                        Preview
+                      </a>
+
+                      <div className="event-card-actions-right">
+                        <button type="button" className="icon-button" onClick={() => handleDuplicate(item)}>
+                          <Icon name="duplicate" size={13} />
+                          Duplicate
+                        </button>
+                        <button type="button" className="icon-button" onClick={() => handleToggle(item)}>
+                          <Icon name={item.is_active ? "pause" : "play"} size={13} />
+                          {item.is_active ? "Pause" : "Activate"}
+                        </button>
+                        <button type="button" className="icon-button edit-button" onClick={() => handleEdit(item)}>
+                          <Icon name="edit" size={13} />
+                          Edit
+                        </button>
+                        <button type="button" className="icon-button danger-button" onClick={() => handleDelete(item.id)}>
+                          <Icon name="trash" size={13} />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </SectionCard>
       </div>
 
-      {/* Create / Edit form */}
       <SectionCard
         title={editingId ? "Edit event type" : "New event type"}
-        subtitle="Configure how guests book time with you."
+        subtitle="Set up a clean booking experience for guests."
       >
         <form className="form-grid" onSubmit={handleSubmit} noValidate>
           <label>
             Title
             <input
               value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              onBlur={() => setTouched((t) => ({ ...t, title: true }))}
-              placeholder="30-min intro call"
+              onChange={(event) => handleTitleChange(event.target.value)}
+              onBlur={() => setTouched((current) => ({ ...current, title: true }))}
+              placeholder="Enter event title"
               aria-invalid={showError("title") ? "true" : "false"}
               required
             />
-            {showError("title") && <p className="field-error">{errors.title}</p>}
+            <p className="field-hint">Use a clear internal name that guests will immediately understand.</p>
+            {showError("title") ? <p className="field-error">{errors.title}</p> : null}
           </label>
 
           <label>
             URL slug
             <input
               value={form.url_slug}
-              onChange={(e) => setForm({ ...form, url_slug: e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") })}
-              onBlur={() => setTouched((t) => ({ ...t, url_slug: true }))}
-              placeholder="intro-call"
+              onChange={(event) => handleSlugChange(event.target.value)}
+              onBlur={() => setTouched((current) => ({ ...current, url_slug: true }))}
+              placeholder="booking-page"
               aria-invalid={showError("url_slug") ? "true" : "false"}
               required
             />
-            {showError("url_slug") && <p className="field-error">{errors.url_slug}</p>}
-            {form.url_slug && !showError("url_slug") && (
+            <p className="field-hint">This is created from the title automatically until you edit it yourself.</p>
+            {showError("url_slug") ? <p className="field-error">{errors.url_slug}</p> : null}
+            {form.url_slug && !showError("url_slug") ? (
               <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>/book/{form.url_slug}</p>
-            )}
+            ) : null}
           </label>
 
           <label className="full-width">
@@ -425,33 +653,38 @@ export default function DashboardPage() {
             <textarea
               rows="3"
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="A short description shown to guests on the booking page."
+              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              placeholder="Add a short summary that explains what guests can expect."
             />
           </label>
 
           <label>
             Duration
             <div className="duration-presets">
-              {DURATION_PRESETS.map((d) => (
+              {DURATION_PRESETS.map((duration) => (
                 <button
-                  key={d}
+                  key={duration}
                   type="button"
-                  className={form.duration === d ? "duration-chip active" : "duration-chip"}
-                  onClick={() => setForm({ ...form, duration: d })}
-                >{d}m</button>
+                  className={form.duration === duration ? "duration-chip active" : "duration-chip"}
+                  onClick={() => setForm((current) => ({ ...current, duration }))}
+                >
+                  {duration}m
+                </button>
               ))}
             </div>
             <input
-              type="number" min="5" max="480" step="5"
+              type="number"
+              min="5"
+              max="480"
+              step="5"
               value={form.duration}
-              onChange={(e) => setForm({ ...form, duration: Number(e.target.value) })}
-              onBlur={() => setTouched((t) => ({ ...t, duration: true }))}
+              onChange={(event) => setForm((current) => ({ ...current, duration: Number(event.target.value) }))}
+              onBlur={() => setTouched((current) => ({ ...current, duration: true }))}
               aria-invalid={showError("duration") ? "true" : "false"}
               required
               style={{ marginTop: 8 }}
             />
-            {showError("duration") && <p className="field-error">{errors.duration}</p>}
+            {showError("duration") ? <p className="field-error">{errors.duration}</p> : null}
           </label>
 
           <label>
@@ -463,50 +696,50 @@ export default function DashboardPage() {
                   type="button"
                   className={`color-swatch ${form.accent_color === color ? "selected" : ""}`}
                   style={{ background: color }}
-                  onClick={() => setForm({ ...form, accent_color: color })}
+                  onClick={() => setForm((current) => ({ ...current, accent_color: color }))}
                   title={color}
                 />
               ))}
             </div>
           </label>
 
-          {/* Location */}
           <label className="full-width">
             Location type
             <div className="location-type-grid">
-              {LOCATION_TYPES.map((lt) => (
+              {LOCATION_TYPES.map((locationType) => (
                 <button
-                  key={lt.value}
+                  key={locationType.value}
                   type="button"
-                  className={`location-type-chip ${form.location_type === lt.value ? "active" : ""}`}
-                  onClick={() => setForm({ ...form, location_type: lt.value })}
+                  className={`location-type-chip ${form.location_type === locationType.value ? "active" : ""}`}
+                  onClick={() => setForm((current) => ({ ...current, location_type: locationType.value }))}
                 >
-                  {lt.icon} {lt.label}
+                  <Icon name={locationType.icon} size={14} />
+                  {locationType.label}
                 </button>
               ))}
             </div>
-            {(form.location_type === "in_person" || form.location_type === "custom") && (
+
+            {(form.location_type === "in_person" || form.location_type === "custom") ? (
               <input
                 style={{ marginTop: 8 }}
                 value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
-                placeholder={form.location_type === "in_person" ? "123 Main St, City" : "e.g. Ask in notes"}
+                onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
+                placeholder={form.location_type === "in_person" ? "Enter address or venue details" : "Add instructions guests should follow"}
               />
-            )}
+            ) : null}
           </label>
 
-          {/* Active toggle */}
           <label className="full-width toggle-row">
             <span>
               <strong>Active</strong>
               <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--text-muted)", fontWeight: 400 }}>
-                Inactive event types are hidden from guests
+                Paused event types stay hidden until you are ready to share them.
               </p>
             </span>
             <button
               type="button"
               className={`toggle-switch ${form.is_active ? "on" : ""}`}
-              onClick={() => setForm({ ...form, is_active: !form.is_active })}
+              onClick={() => setForm((current) => ({ ...current, is_active: !current.is_active }))}
               aria-label="Toggle active"
               role="switch"
               aria-checked={form.is_active}
@@ -515,90 +748,85 @@ export default function DashboardPage() {
             </button>
           </label>
 
-          {/* Advanced settings collapsible */}
           <div className="full-width">
-            <button
-              type="button"
-              className="advanced-toggle-btn"
-              onClick={() => setShowAdvanced((v) => !v)}
-            >
-              <svg
-                width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                style={{ transform: showAdvanced ? "rotate(180deg)" : "none", transition: "transform 200ms ease" }}
-              >
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-              {showAdvanced ? "Hide" : "Show"} advanced settings
+            <button type="button" className="advanced-toggle-btn" onClick={() => setShowAdvanced((current) => !current)}>
+              <Icon name="spark" size={14} />
+              {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
             </button>
 
-            {showAdvanced && (
+            {showAdvanced ? (
               <div className="advanced-settings form-grid" style={{ marginTop: "var(--space-4)" }}>
                 <label>
                   Buffer between meetings
                   <div className="input-with-unit">
                     <input
-                      type="number" min="0" max="120" step="5"
+                      type="number"
+                      min="0"
+                      max="120"
+                      step="5"
                       value={form.buffer_minutes}
-                      onChange={(e) => setForm({ ...form, buffer_minutes: Number(e.target.value) })}
+                      onChange={(event) => setForm((current) => ({ ...current, buffer_minutes: Number(event.target.value) }))}
                     />
                     <span className="input-unit">min</span>
                   </div>
-                  <p className="field-hint">Adds a gap after each booking so you have breathing room.</p>
+                  <p className="field-hint">Add breathing room after each confirmed booking.</p>
                 </label>
 
                 <label>
                   Minimum notice period
                   <div className="input-with-unit">
                     <input
-                      type="number" min="0" max="168" step="1"
+                      type="number"
+                      min="0"
+                      max="168"
+                      step="1"
                       value={form.min_notice_hours}
-                      onChange={(e) => setForm({ ...form, min_notice_hours: Number(e.target.value) })}
+                      onChange={(event) => setForm((current) => ({ ...current, min_notice_hours: Number(event.target.value) }))}
                     />
                     <span className="input-unit">hrs</span>
                   </div>
-                  <p className="field-hint">How far in advance guests must book (e.g. 24 hrs).</p>
+                  <p className="field-hint">Control how much lead time guests need before booking.</p>
                 </label>
 
                 <label className="full-width">
                   Maximum advance booking window
                   <div className="input-with-unit">
                     <input
-                      type="number" min="1" max="365" step="1"
+                      type="number"
+                      min="1"
+                      max="365"
+                      step="1"
                       value={form.max_advance_days}
-                      onChange={(e) => setForm({ ...form, max_advance_days: Number(e.target.value) })}
+                      onChange={(event) => setForm((current) => ({ ...current, max_advance_days: Number(event.target.value) }))}
                     />
                     <span className="input-unit">days</span>
                   </div>
-                  <p className="field-hint">Guests can only book within this many days from today.</p>
+                  <p className="field-hint">Keep your schedule open only as far ahead as you want to plan.</p>
                 </label>
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="button-row full-width">
             <button type="submit" className="primary-button" disabled={!isValid || submitting}>
-              {submitting
-                ? <><span className="btn-spinner" /> Saving…</>
-                : editingId ? "Save changes" : "Create event type"
-              }
+              {submitting ? (
+                <>
+                  <span className="btn-spinner" />
+                  Saving...
+                </>
+              ) : editingId ? "Save changes" : "Create event type"}
             </button>
-            {editingId && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => { setEditingId(null); setForm(emptyForm); setTouched({}); setShowAdvanced(false); }}
-              >
+
+            {editingId ? (
+              <button type="button" className="secondary-button" onClick={resetEditor}>
                 Cancel
               </button>
-            )}
+            ) : null}
           </div>
         </form>
       </SectionCard>
 
-      {shareTarget && (
-        <ShareModal item={shareTarget} onClose={() => setShareTarget(null)} />
-      )}
+      {shareTarget ? <ShareModal item={shareTarget} onClose={() => setShareTarget(null)} /> : null}
     </div>
   );
 }

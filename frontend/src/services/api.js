@@ -55,6 +55,8 @@ export const api = {
   register: (payload) => request("/api/auth/register", { method: "POST", body: JSON.stringify(payload) }),
   login: (payload) => request("/api/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   getMe: () => request("/api/auth/me"),
+  updateProfile: (payload) => request("/api/auth/profile", { method: "PUT", body: JSON.stringify(payload) }),
+  changePassword: (payload) => request("/api/auth/change-password", { method: "PUT", body: JSON.stringify(payload) }),
 
   // Event types
   getSummary: () => request("/api/summary"),
@@ -71,8 +73,10 @@ export const api = {
 
   // Bookings
   getBookings: (scope = "all") => request(`/api/bookings?scope=${scope}`),
+  createAdminBooking: (payload) => request("/api/bookings", { method: "POST", body: JSON.stringify(payload) }),
   cancelBooking: (id) => request(`/api/bookings/${id}/cancel`, { method: "POST" }),
   rescheduleBooking: (id, payload) => request(`/api/bookings/${id}/reschedule`, { method: "POST", body: JSON.stringify(payload) }),
+  updateBookingNotes: (id, notes) => request(`/api/bookings/${id}/notes`, { method: "PATCH", body: JSON.stringify({ notes }) }),
 
   // Blockouts
   getBlockouts: () => request("/api/blockouts"),
@@ -88,4 +92,25 @@ export const api = {
   // OTP (public)
   requestOtp: (email) => request("/api/public/otp/request", { method: "POST", body: JSON.stringify({ email }) }),
   verifyOtp: (email, code) => request("/api/public/otp/verify", { method: "POST", body: JSON.stringify({ email, code }) }),
+
+  // Integrations
+  getIntegrations: () => request("/api/integrations"),
+  saveIntegration: (key, config) => request(`/api/integrations/${key}`, { method: "POST", body: JSON.stringify({ config }) }),
+  disconnectIntegration: (key) => request(`/api/integrations/${key}`, { method: "DELETE" }),
+  testIntegration: (key) => request(`/api/integrations/${key}/test`, { method: "POST" }),
+
+  // API keys
+  getApiKeys: () => request("/api/auth/api-keys"),
+  generateApiKey: () => request("/api/auth/api-keys", { method: "POST" }),
+  revokeApiKey: () => request("/api/auth/api-keys", { method: "DELETE" }),
+
+  // iCal feed URL (helper, not a request)
+  icalUrl: (username) => `${API_BASE}/api/public/ical/${username}`,
+
+  // Workflows
+  getWorkflows: () => request("/api/workflows"),
+  createWorkflow: (payload) => request("/api/workflows", { method: "POST", body: JSON.stringify(payload) }),
+  updateWorkflow: (id, payload) => request(`/api/workflows/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  toggleWorkflow: (id) => request(`/api/workflows/${id}/toggle`, { method: "PATCH" }),
+  deleteWorkflow: (id) => request(`/api/workflows/${id}`, { method: "DELETE" }),
 };

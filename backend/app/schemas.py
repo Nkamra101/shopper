@@ -7,7 +7,7 @@ class EventTypeBase(BaseModel):
     title: str = Field(..., min_length=2, max_length=120)
     description: str = Field(default="", max_length=500)
     duration: int = Field(..., ge=5, le=480)
-    url_slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9-]+$")
+    url_slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     accent_color: str = Field(default="#6366f1", max_length=30)
     is_active: bool = True
     buffer_minutes: int = Field(default=0, ge=0, le=120)
@@ -99,6 +99,15 @@ class BookingCreate(BaseModel):
     verification_token: str = Field(..., min_length=16, max_length=64)
 
 
+class AdminBookingCreate(BaseModel):
+    event_type_id: str = Field(..., min_length=8, max_length=64)
+    booker_name: str = Field(..., min_length=2, max_length=120)
+    booker_email: EmailStr
+    notes: str = Field(default="", max_length=500)
+    start_time: datetime
+    send_email: bool = True
+
+
 class OtpRequest(BaseModel):
     email: EmailStr
 
@@ -107,6 +116,7 @@ class OtpRequestResponse(BaseModel):
     sent: bool
     expires_in_seconds: int
     resend_after_seconds: int
+    dev_code: str | None = None
 
 
 class OtpVerify(BaseModel):
