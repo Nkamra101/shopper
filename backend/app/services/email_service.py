@@ -19,6 +19,7 @@ import ssl
 import time
 from email.message import EmailMessage
 from email.utils import formataddr
+from html import escape
 from typing import Optional
 
 from ..config import settings
@@ -42,75 +43,154 @@ def _log_console_email(*, subject: str, recipient: str, text_body: str) -> bool:
 
 _BASE_STYLE = (
     "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;"
-    "color: #0f172a; line-height: 1.55; max-width: 560px; margin: 0 auto;"
-    "padding: 24px; background: #ffffff;"
+    "color: #18181b; line-height: 1.6; max-width: 520px; margin: 0 auto;"
+    "padding: 32px; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 12px;"
 )
 _BUTTON_STYLE = (
-    "display: inline-block; padding: 12px 22px; background: #0f172a;"
+    "display: inline-block; padding: 11px 20px; background: #18181b;"
     "color: #ffffff !important; text-decoration: none; border-radius: 8px;"
-    "font-weight: 600; margin-top: 12px;"
+    "font-weight: 500; font-size: 14px; margin-top: 8px;"
 )
 _CARD_STYLE = (
-    "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;"
-    "padding: 16px; margin: 16px 0;"
+    "background: #fafafa; border: 1px solid #e4e4e7; border-radius: 10px;"
+    "padding: 16px; margin: 20px 0;"
 )
+_LABEL_STYLE = (
+    "margin: 0 0 4px; color: #71717a; font-size: 11px;"
+    "letter-spacing: 0.06em; text-transform: uppercase;"
+)
+_MUTED_LINK_STYLE = "color: #71717a; font-size: 13px;"
 
 
 def _wrap_html(title: str, inner: str) -> str:
     return f"""\
 <!doctype html>
-<html><body style="margin:0;background:#f1f5f9;padding:24px 0;">
+<html><body style="margin:0;background:#fafafa;padding:32px 16px;">
 <div style="{_BASE_STYLE}">
-  <h2 style="margin:0 0 4px;font-size:20px;">{title}</h2>
+  <h2 style="margin:0 0 16px;font-size:17px;font-weight:600;">{escape(title)}</h2>
   {inner}
-  <p style="margin-top:24px;font-size:12px;color:#94a3b8;">
-    Sent by Shopper Scheduler
-  </p>
+  <p style="margin:28px 0 0;font-size:12px;color:#a1a1aa;">Sent by Shopper</p>
 </div>
 </body></html>"""
 
 
-def _booking_html(action: str, event_title: str, start_time: str, meeting_url: Optional[str]) -> tuple[str, str]:
+def _detail_card(rows: list[tuple[str, str]]) -> str:
+    inner = f'<div style="{_CARD_STYLE}">'
+    for index, (label, value) in enumerate(rows):
+        margin_top = "0" if index == 0 else "14px"
+        inner += f'<p style="{_LABEL_STYLE}margin-top:{margin_top};">{escape(label)}</p>'
+        inner += f'<p style="margin:0;font-weight:500;font-size:14px;">{escape(value)}</p>'
+    return inner + "</div>"
+
+
+def manage_url_for(manage_token: Optional[str]) -> str:
+    if not manage_token:
+        return ""
+    return f"{settings.FRONTEND_URL.rstrip('/')}/manage/{manage_token}"
+
+
+def _guest_booking_html(
+    action: str,
+    event_title: str,
+    start_time: str,
+    meeting_url: Optional[str],
+    manage_token: Optional[str] = None,
+) -> tuple[str, str]:
     headlines = {
         "booked": ("Your booking is confirmed", "Your meeting has been scheduled."),
-        "rescheduled": ("Your booking was rescheduled", "Your meeting has been moved to a new time."),
+        "rescheduled": ("Your booking was rescheduled", "Your meeting has moved to a new time."),
         "cancelled": ("Your booking was cancelled", "Your meeting has been cancelled."),
     }
     title, lead = headlines.get(action, ("Booking update", "There is an update on your booking."))
 
-    inner = f'<p>{lead}</p><div style="{_CARD_STYLE}">'
-    inner += f'<p style="margin:0 0 6px;color:#64748b;font-size:13px;">EVENT</p>'
-    inner += f'<p style="margin:0 0 12px;font-weight:600;">{event_title}</p>'
-    inner += f'<p style="margin:0 0 6px;color:#64748b;font-size:13px;">WHEN</p>'
-    inner += f'<p style="margin:0;font-weight:600;">{start_time}</p>'
-    inner += "</div>"
+    inner = f'<p style="margin:0;font-size:14px;color:#3f3f46;">{lead}</p>'
+    inner += _detail_card([("Event", event_title), ("When", start_time)])
 
     if meeting_url and action != "cancelled":
-        inner += f'<a href="{meeting_url}" style="{_BUTTON_STYLE}">Join video call</a>'
-        inner += f'<p style="font-size:12px;color:#64748b;margin-top:8px;">Or copy this link: {meeting_url}</p>'
-
-    if action == "cancelled":
-        inner += '<p style="color:#64748b;">If this was unexpected, please reach out to the organiser.</p>'
+        inner += f'<a href="{escape(meeting_url, quote=True)}" style="{_BUTTON_STYLE}">Join video call</a>'
+        inner += (
+            f'<p style="{_MUTED_LINK_STYLE}margin:10px 0 0;">'
+            f"Or copy this link: {escape(meeting_url)}</p>"
+        )
 
     text_lines = [lead, "", f"Event: {event_title}", f"When:  {start_time}"]
     if meeting_url and action != "cancelled":
+        text_lines += ["", f"Join: {meeting_url}"]
+
+    manage_url = manage_url_for(manage_token)
+    if manage_url and action != "cancelled":
+        inner += (
+            f'<p style="margin:24px 0 0;padding-top:20px;border-top:1px solid #e4e4e7;'
+            f'{_MUTED_LINK_STYLE}">Need to change plans? '
+            f'<a href="{escape(manage_url, quote=True)}" style="color:#18181b;">'
+            f"Reschedule or cancel</a> — no account needed.</p>"
+        )
+        text_lines += ["", f"Reschedule or cancel: {manage_url}"]
+
+    if action == "cancelled":
+        inner += (
+            '<p style="margin:16px 0 0;font-size:13px;color:#71717a;">'
+            "If this was unexpected, please reach out to the organiser.</p>"
+        )
+
+    return _wrap_html(title, inner), "\n".join(text_lines)
+
+
+def _host_booking_html(
+    action: str,
+    event_title: str,
+    start_time: str,
+    meeting_url: Optional[str],
+    guest_name: str,
+    guest_email: str,
+) -> tuple[str, str]:
+    headlines = {
+        "host_notified": ("New booking", f"{guest_name or 'Someone'} booked a meeting with you."),
+        "host_cancelled_by_guest": (
+            "Booking cancelled by guest",
+            f"{guest_name or 'Your guest'} cancelled their meeting.",
+        ),
+        "host_rescheduled_by_guest": (
+            "Booking rescheduled by guest",
+            f"{guest_name or 'Your guest'} moved their meeting to a new time.",
+        ),
+    }
+    title, lead = headlines.get(action, ("Booking update", "There is an update on a booking."))
+
+    rows = [("Event", event_title), ("When", start_time)]
+    if guest_name:
+        rows.append(("Guest", guest_name))
+    if guest_email:
+        rows.append(("Email", guest_email))
+
+    inner = f'<p style="margin:0;font-size:14px;color:#3f3f46;">{escape(lead)}</p>'
+    inner += _detail_card(rows)
+
+    if meeting_url and action != "host_cancelled_by_guest":
+        inner += f'<a href="{escape(meeting_url, quote=True)}" style="{_BUTTON_STYLE}">Join video call</a>'
+
+    text_lines = [lead, "", f"Event: {event_title}", f"When:  {start_time}"]
+    if guest_name:
+        text_lines.append(f"Guest: {guest_name} <{guest_email}>")
+    if meeting_url and action != "host_cancelled_by_guest":
         text_lines += ["", f"Join: {meeting_url}"]
     return _wrap_html(title, inner), "\n".join(text_lines)
 
 
 def _otp_html(code: str, ttl_minutes: int) -> tuple[str, str]:
     inner = (
-        f'<p>Use this code to verify your email and finish booking your meeting.</p>'
+        '<p style="margin:0;font-size:14px;color:#3f3f46;">'
+        "Use this code to verify your email and finish booking your meeting.</p>"
         f'<div style="{_CARD_STYLE}text-align:center;">'
-        f'<p style="margin:0 0 4px;color:#64748b;font-size:13px;">VERIFICATION CODE</p>'
-        f'<p style="margin:0;font-size:34px;letter-spacing:6px;font-weight:700;">{code}</p>'
-        f"</div>"
-        f'<p style="color:#64748b;font-size:13px;">'
-        f"This code expires in {ttl_minutes} minute(s). If you didn't request it, you can ignore this email."
-        f"</p>"
+        f'<p style="{_LABEL_STYLE}">Verification code</p>'
+        f'<p style="margin:0;font-size:32px;letter-spacing:8px;font-weight:600;">{escape(code)}</p>'
+        "</div>"
+        '<p style="margin:0;color:#71717a;font-size:13px;">'
+        f"This code expires in {ttl_minutes} minute(s). "
+        "If you didn't request it, you can ignore this email.</p>"
     )
     text = (
-        f"Your Shopper Scheduler verification code is: {code}\n"
+        f"Your Shopper verification code is: {code}\n"
         f"It expires in {ttl_minutes} minute(s).\n"
     )
     return _wrap_html("Verify your email", inner), text

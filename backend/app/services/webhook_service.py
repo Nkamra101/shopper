@@ -16,8 +16,12 @@ async def fire_single_webhook(integration_doc: dict, event: str, payload: dict) 
     await _fire_single(integration_doc.get("key", "webhook"), webhook_url, fmt, event, payload)
 
 
-async def fire_webhooks(db: Database, event: str, payload: dict) -> None:
-    integrations = list(db.integrations.find({"type": "webhook"}))
+async def fire_webhooks(db: Database, owner_id: str, event: str, payload: dict) -> None:
+    """Notify only the webhook integrations belonging to this owner."""
+    if not owner_id:
+        return
+
+    integrations = list(db.integrations.find({"owner_id": owner_id, "type": "webhook"}))
     tasks = []
     for integration in integrations:
         config = integration.get("config", {})

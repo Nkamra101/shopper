@@ -15,19 +15,43 @@ def get_db() -> Database:
 def ensure_indexes(db: Database) -> None:
     """Create indexes on startup. All operations are idempotent."""
     db.users.create_index("email", unique=True)
+    # Sparse: only users who set a public booking username occupy the namespace.
+    db.users.create_index("booking_username", unique=True, sparse=True)
+
+    # url_slug stays globally unique so public /book/<slug> links keep working
+    # without a username segment.
     db.event_types.create_index("url_slug", unique=True)
-    db.event_types.create_index([("created_at", DESCENDING)])
+    db.event_types.create_index([("owner_id", ASCENDING), ("created_at", DESCENDING)])
+
+    db.bookings.create_index([("owner_id", ASCENDING), ("start_time", ASCENDING)])
     db.bookings.create_index([("start_time", ASCENDING)])
     db.bookings.create_index("booker_email")
     db.bookings.create_index("event_type_id")
     db.bookings.create_index("status")
-    db.blockout_dates.create_index("date", unique=True)
+    db.bookings.create_index("manage_token", unique=True, sparse=True)
+
+    db.availability_rules.create_index([("owner_id", ASCENDING), ("day_of_week", ASCENDING)])
+    db.availability_settings.create_index("owner_id", unique=True, sparse=True)
+
+    db.blockout_dates.create_index(
+        [("owner_id", ASCENDING), ("start_date", ASCENDING), ("end_date", ASCENDING)]
+    )
+
     db.email_otps.create_index("email")
     db.email_otps.create_index([("created_at", DESCENDING)])
     db.verification_tokens.create_index("token", unique=True)
     db.verification_tokens.create_index("email")
-    db.integrations.create_index([("user_id", ASCENDING), ("key", ASCENDING)], unique=True)
-    db.workflows.create_index([("created_at", ASCENDING)])
+    db.integrations.create_index([("owner_id", ASCENDING), ("key", ASCENDING)], unique=True)
+    db.workflows.create_index([("owner_id", ASCENDING), ("created_at", ASCENDING)])
+
+    # One reminder per (booking, workflow) — this is what makes the scheduler
+    # safe to run on every poll and across restarts.
+    db.reminder_log.create_index(
+        [("booking_id", ASCENDING), ("workflow_id", ASCENDING)], unique=True
+    )
+
+    # Mongo evicts these automatically; no cleanup job needed.
+    db.rate_limits.create_index("expires_at", expireAfterSeconds=0)
 
 
 # ------------------------------------------------------------------ helpers --

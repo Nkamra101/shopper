@@ -8,6 +8,8 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"
+
 
 def _bool_env(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -45,6 +47,10 @@ class Settings:
 
     # ----- Behaviour toggles -----
     SEED_ON_STARTUP: bool = _bool_env("SEED_ON_STARTUP", default=False)
+    ALLOW_REGISTRATION: bool = _bool_env("ALLOW_REGISTRATION", default=True)
+    RUN_MIGRATIONS_ON_STARTUP: bool = _bool_env("RUN_MIGRATIONS_ON_STARTUP", default=True)
+    REMINDER_SCHEDULER_ENABLED: bool = _bool_env("REMINDER_SCHEDULER_ENABLED", default=True)
+    REMINDER_POLL_SECONDS: int = int(os.getenv("REMINDER_POLL_SECONDS", "60"))
 
     # ----- Defaults -----
     DEFAULT_TIMEZONE: str = os.getenv("DEFAULT_TIMEZONE", "Asia/Kolkata")
@@ -60,9 +66,18 @@ class Settings:
     SMTP_RETRY_COUNT: int = int(os.getenv("SMTP_RETRY_COUNT", "1"))
 
     # ----- Auth / JWT -----
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me-in-production-use-a-long-random-string")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+
+    # ----- Rate limiting (requests per window, per client IP) -----
+    RATE_LIMIT_ENABLED: bool = _bool_env("RATE_LIMIT_ENABLED", default=True)
+    RATE_LIMIT_LOGIN: int = int(os.getenv("RATE_LIMIT_LOGIN", "10"))
+    RATE_LIMIT_LOGIN_WINDOW: int = int(os.getenv("RATE_LIMIT_LOGIN_WINDOW", "300"))
+    RATE_LIMIT_BOOKING: int = int(os.getenv("RATE_LIMIT_BOOKING", "10"))
+    RATE_LIMIT_BOOKING_WINDOW: int = int(os.getenv("RATE_LIMIT_BOOKING_WINDOW", "3600"))
+    RATE_LIMIT_OTP: int = int(os.getenv("RATE_LIMIT_OTP", "8"))
+    RATE_LIMIT_OTP_WINDOW: int = int(os.getenv("RATE_LIMIT_OTP_WINDOW", "3600"))
 
     # ----- Google OAuth -----
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -97,6 +112,29 @@ class Settings:
     @property
     def email_enabled(self) -> bool:
         return self.email_delivery_mode in {"smtp", "console"}
+
+    def validation_errors(self) -> List[str]:
+        """Misconfigurations that must block a production boot."""
+        problems: List[str] = []
+        if not self.is_production:
+            return problems
+
+        if self.SECRET_KEY == DEFAULT_SECRET_KEY or len(self.SECRET_KEY) < 32:
+            problems.append(
+                "SECRET_KEY is unset, default, or shorter than 32 characters. "
+                "Every JWT would be forgeable. Generate one with: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+            )
+        if not self.MONGODB_URI or "localhost" in self.MONGODB_URI or "127.0.0.1" in self.MONGODB_URI:
+            problems.append(
+                "MONGODB_URI points at localhost in production. Set it to your "
+                "MongoDB Atlas connection string."
+            )
+        if not self.CORS_ORIGINS:
+            problems.append("CORS_ORIGINS is empty. Set it to your frontend's public URL.")
+        if any(origin == "*" for origin in self.CORS_ORIGINS):
+            problems.append("CORS_ORIGINS contains '*', which is unsafe in production.")
+        return problems
 
 
 settings = Settings()
