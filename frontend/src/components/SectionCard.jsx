@@ -1,15 +1,17 @@
-export default function SectionCard({ title, subtitle, action, children }) {
+/** A titled panel. `actions` sits opposite the title in the header. */
+export default function SectionCard({ title, subtitle, actions, children, bodyClass = "" }) {
   return (
-    <section className="section-card">
-      <div className="section-header">
-        <div>
-          <h3>{title}</h3>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
-        {action}
-      </div>
-      {children}
+    <section className="card">
+      {(title || actions) && (
+        <header className="card-head">
+          <div>
+            {title ? <h3 className="card-title">{title}</h3> : null}
+            {subtitle ? <p className="card-sub">{subtitle}</p> : null}
+          </div>
+          {actions ? <div className="row-2">{actions}</div> : null}
+        </header>
+      )}
+      <div className={`card-body ${bodyClass}`}>{children}</div>
     </section>
   );
 }
-

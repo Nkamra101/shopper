@@ -10,11 +10,14 @@ import {
   timezoneOffsetLabel,
   toDateInputValue,
 } from "../utils/date";
-import { Skeleton } from "../components/Skeleton";
+import Logo from "../components/Logo";
+import Icon from "../components/Icon";
 import ThemeToggle from "../components/ThemeToggle";
+import { Skeleton } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STEPS = ["Pick a time", "Your details", "Confirm"];
 
 function validate(form, questions) {
   const errors = {};
@@ -30,33 +33,28 @@ function validate(form, questions) {
   return errors;
 }
 
-function TimezoneSelect({ value, onChange }) {
+function TimezoneSelect({ value, onChange, id = "tz" }) {
   const options = useMemo(() => {
-    const seen = new Set(COMMON_TIMEZONES);
-    // Always include the visitor's own zone and whatever is selected, even
-    // when they fall outside the curated list.
-    return [
-      ...(seen.has(value) ? [] : [value]),
-      ...(seen.has(browserTimezone()) || browserTimezone() === value ? [] : [browserTimezone()]),
-      ...COMMON_TIMEZONES,
-    ];
+    const browser = browserTimezone();
+    const extras = [value, browser].filter((zone) => zone && !COMMON_TIMEZONES.includes(zone));
+    return [...new Set([...extras, ...COMMON_TIMEZONES])];
   }, [value]);
 
   return (
-    <label className="tz-select">
-      <span className="tz-select-label">Times shown in</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+    <div className="field tz-field">
+      <label className="field-label tiny subtle" htmlFor={id}>Times shown in</label>
+      <select id={id} className="select" value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((zone) => (
           <option key={zone} value={zone}>
-            {zone.replace(/_/g, " ")} ({timezoneOffsetLabel(zone)})
+            {zone.replace(/_/g, " ")} · {timezoneOffsetLabel(zone)}
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 
-function CalendarGrid({ selectedDate, onSelectDate, availableDays, onMonthChange, loadingDays }) {
+function Calendar({ selectedDate, onSelectDate, availableDays, onMonthChange, loading }) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const [viewMonth, setViewMonth] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -65,67 +63,45 @@ function CalendarGrid({ selectedDate, onSelectDate, availableDays, onMonthChange
   const month = viewMonth.getMonth();
   const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
 
-  useEffect(() => {
-    onMonthChange(monthKey);
-  }, [monthKey, onMonthChange]);
+  useEffect(() => { onMonthChange(monthKey); }, [monthKey, onMonthChange]);
 
-  const lastDay = new Date(year, month + 1, 0);
-  const startPad = (new Date(year, month, 1).getDay() + 6) % 7;
-  const cells = [];
-  for (let index = 0; index < startPad; index += 1) cells.push(null);
-  for (let day = 1; day <= lastDay.getDate(); day += 1) cells.push(day);
-
-  function changeMonth(delta) {
-    setViewMonth(new Date(year, month + delta, 1));
-  }
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const pad = (new Date(year, month, 1).getDay() + 6) % 7;
+  const cells = [...Array(pad).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
 
   return (
-    <div className="calendar-grid-widget">
-      <div className="calendar-header">
-        <button type="button" className="cal-nav-btn" onClick={() => changeMonth(-1)} aria-label="Previous month">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+    <div className="calendar">
+      <div className="calendar-head">
+        <button type="button" className="btn btn-icon btn-ghost" onClick={() => setViewMonth(new Date(year, month - 1, 1))} aria-label="Previous month">
+          <Icon name="chevronLeft" size={15} />
         </button>
-        <span className="cal-month-label">
-          {viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-        </span>
-        <button type="button" className="cal-nav-btn" onClick={() => changeMonth(1)} aria-label="Next month">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
+        <span className="calendar-month">{viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span>
+        <button type="button" className="btn btn-icon btn-ghost" onClick={() => setViewMonth(new Date(year, month + 1, 1))} aria-label="Next month">
+          <Icon name="chevronRight" size={15} />
         </button>
       </div>
+
       <div className="calendar-weekdays">
-        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((label) => (
-          <span key={label} className="cal-weekday">{label}</span>
-        ))}
+        {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((day) => <span key={day}>{day}</span>)}
       </div>
-      <div className={`calendar-cells${loadingDays ? " is-loading" : ""}`}>
+
+      <div className={`calendar-grid${loading ? " is-loading" : ""}`}>
         {cells.map((day, index) => {
           if (!day) return <span key={`pad-${index}`} />;
           const date = new Date(year, month, day);
           date.setHours(0, 0, 0, 0);
           const iso = toDateInputValue(date);
           const isPast = date < today;
-          // Only grey out days once we know the month's availability.
           const unavailable = !isPast && availableDays !== null && !availableDays.has(iso);
           const classes = [
-            "cal-day",
-            selectedDate === iso ? "selected" : "",
-            date.getTime() === today.getTime() ? "today" : "",
-            isPast ? "past" : "",
-            unavailable ? "unavailable" : "",
+            "calendar-day",
+            selectedDate === iso ? "is-selected" : "",
+            date.getTime() === today.getTime() ? "is-today" : "",
+            unavailable ? "is-unavailable" : "",
           ].filter(Boolean).join(" ");
 
           return (
-            <button
-              key={iso}
-              type="button"
-              disabled={isPast || unavailable}
-              className={classes}
-              onClick={() => onSelectDate(iso)}
-            >
+            <button key={iso} type="button" disabled={isPast || unavailable} className={classes} onClick={() => onSelectDate(iso)}>
               {day}
             </button>
           );
@@ -135,59 +111,43 @@ function CalendarGrid({ selectedDate, onSelectDate, availableDays, onMonthChange
   );
 }
 
-function StepIndicator({ step }) {
-  const steps = ["Choose time", "Your details", "Confirm"];
-  return (
-    <div className="step-indicator">
-      {steps.map((label, index) => (
-        <div key={label} className={`step-item ${index < step ? "done" : index === step ? "active" : ""}`}>
-          <div className="step-dot">{index < step ? "✓" : index + 1}</div>
-          <span className="step-label">{label}</span>
-          {index < steps.length - 1 && <div className="step-line" />}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function QuestionField({ question, value, onChange, error }) {
-  const common = {
+  const id = `q-${question.id}`;
+  const shared = {
+    id,
     value: value || "",
     onChange: (event) => onChange(question.id, event.target.value),
     "aria-invalid": error ? "true" : "false",
   };
 
   return (
-    <label className="full-width">
-      {question.label}
-      {question.required ? <span className="required-mark"> *</span> : null}
+    <div className="field">
+      <label className="field-label" htmlFor={id}>
+        {question.label}{question.required ? <span className="req"> *</span> : null}
+      </label>
+
       {question.type === "textarea" ? (
-        <textarea rows="3" placeholder={question.placeholder} {...common} />
+        <textarea className="textarea" rows="3" placeholder={question.placeholder} {...shared} />
       ) : question.type === "select" ? (
-        <select {...common}>
+        <select className="select" {...shared}>
           <option value="">Select an option</option>
-          {(question.options || []).map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
+          {(question.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
       ) : question.type === "checkbox" ? (
-        <div className="toggle-row">
+        <label className="check">
           <input
             type="checkbox"
             checked={value === "Yes"}
             onChange={(event) => onChange(question.id, event.target.checked ? "Yes" : "")}
           />
-          <span>{question.placeholder || "Yes"}</span>
-        </div>
+          {question.placeholder || "Yes"}
+        </label>
       ) : (
-        <input
-          type={question.type === "phone" ? "tel" : "text"}
-          placeholder={question.placeholder}
-          {...common}
-        />
+        <input className="input" type={question.type === "phone" ? "tel" : "text"} placeholder={question.placeholder} {...shared} />
       )}
-      {error ? <p className="field-error">{error}</p> : null}
-    </label>
+
+      {error ? <span className="error-text">{error}</span> : null}
+    </div>
   );
 }
 
@@ -195,7 +155,7 @@ export default function PublicBookingPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const resendTimerRef = useRef(null);
+  const resendTimer = useRef(null);
 
   const [eventType, setEventType] = useState(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
@@ -208,7 +168,7 @@ export default function PublicBookingPage() {
   const [selectedSlot, setSelectedSlot] = useState("");
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({ booker_name: "", booker_email: "", notes: "", answers: {} });
-  const [touched, setTouched] = useState({});
+  const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [otpStage, setOtpStage] = useState("idle");
   const [otpCode, setOtpCode] = useState("");
@@ -221,140 +181,99 @@ export default function PublicBookingPage() {
 
   const questions = eventType?.questions || [];
   const errors = useMemo(() => validate(form, questions), [form, questions]);
-  const detailErrors = Object.keys(errors);
+  const hasErrors = Object.keys(errors).length > 0;
   const emailValid = !errors.booker_email && form.booker_email.trim().length > 0;
   const isVerified = otpStage === "verified" && verifiedEmail === form.booker_email.trim().toLowerCase();
-  const selectedSlotObject = slots.find((slot) => slot.start_utc === selectedSlot);
+  const chosenSlot = slots.find((slot) => slot.start_utc === selectedSlot);
 
   useEffect(() => {
-    async function loadEvent() {
+    (async () => {
       setLoadingEvent(true);
       try {
         setEventType(await api.getPublicEventType(slug));
       } catch (error) {
-        toast.error(error.message || "Could not load event.");
+        toast.error(error.message || "Could not load this booking page.");
       } finally {
         setLoadingEvent(false);
       }
-    }
-    loadEvent();
+    })();
   }, [slug, toast]);
 
-  // Slots are generated per host-local day. When the visitor is reading them
-  // in another timezone, a single visitor-day can straddle two host-days, so
-  // fetch the neighbours too and keep only what lands on the chosen date.
+  // Slots are generated per host-local day, so a visitor day can straddle two
+  // of them. Fetch the neighbours and keep what lands on the chosen date.
   useEffect(() => {
     let cancelled = false;
-
-    async function loadSlots() {
+    (async () => {
       if (!slug || !selectedDate) return;
       setLoadingSlots(true);
       try {
         const days = [shiftDateKey(selectedDate, -1), selectedDate, shiftDateKey(selectedDate, 1)];
-        const results = await Promise.all(
-          days.map((day) => api.getSlots(slug, day).catch(() => []))
-        );
-
+        const results = await Promise.all(days.map((day) => api.getSlots(slug, day).catch(() => [])));
         if (cancelled) return;
+
         const byStart = new Map();
         results.flat().forEach((slot) => byStart.set(slot.start_utc, slot));
-        const visible = [...byStart.values()]
-          .filter((slot) => dateKeyIn(slot.start_utc, timezone) === selectedDate)
-          .sort((a, b) => a.start_utc.localeCompare(b.start_utc));
-
-        setSlots(visible);
+        setSlots(
+          [...byStart.values()]
+            .filter((slot) => dateKeyIn(slot.start_utc, timezone) === selectedDate)
+            .sort((a, b) => a.start_utc.localeCompare(b.start_utc))
+        );
         setSelectedSlot("");
       } catch (error) {
-        if (!cancelled) toast.error(error.message || "Could not load slots.");
+        if (!cancelled) toast.error(error.message || "Could not load times.");
       } finally {
         if (!cancelled) setLoadingSlots(false);
       }
-    }
-
-    loadSlots();
+    })();
     return () => { cancelled = true; };
   }, [slug, selectedDate, timezone, toast]);
 
-  const handleMonthChange = useCallback(
-    async (monthKey) => {
-      if (!slug) return;
-      setLoadingDays(true);
-      try {
-        const days = await api.getAvailableDays(slug, monthKey);
-        setAvailableDays(new Set(days));
-      } catch {
-        // Non-fatal: without this the calendar simply doesn't grey days out.
-        setAvailableDays(null);
-      } finally {
-        setLoadingDays(false);
-      }
-    },
-    [slug]
-  );
+  const handleMonthChange = useCallback(async (monthKey) => {
+    if (!slug) return;
+    setLoadingDays(true);
+    try {
+      setAvailableDays(new Set(await api.getAvailableDays(slug, monthKey)));
+    } catch {
+      setAvailableDays(null); // non-fatal: days just aren't greyed out
+    } finally {
+      setLoadingDays(false);
+    }
+  }, [slug]);
 
   useEffect(() => {
     if (resendIn <= 0) {
-      if (resendTimerRef.current) {
-        clearInterval(resendTimerRef.current);
-        resendTimerRef.current = null;
-      }
+      clearInterval(resendTimer.current);
+      resendTimer.current = null;
       return undefined;
     }
-    if (!resendTimerRef.current) {
-      resendTimerRef.current = setInterval(() => {
-        setResendIn((current) => (current <= 1 ? 0 : current - 1));
-      }, 1000);
+    if (!resendTimer.current) {
+      resendTimer.current = setInterval(() => setResendIn((n) => (n <= 1 ? 0 : n - 1)), 1000);
     }
-    return () => {
-      if (resendTimerRef.current) {
-        clearInterval(resendTimerRef.current);
-        resendTimerRef.current = null;
-      }
-    };
+    return () => { clearInterval(resendTimer.current); resendTimer.current = null; };
   }, [resendIn]);
 
   function resetVerification() {
-    setOtpStage("idle");
-    setOtpCode("");
-    setVerificationToken("");
-    setVerifiedEmail("");
-    setResendIn(0);
-    setDevCode("");
+    setOtpStage("idle"); setOtpCode(""); setVerificationToken("");
+    setVerifiedEmail(""); setResendIn(0); setDevCode("");
   }
 
-  function handleEmailChange(value) {
-    setForm((current) => ({ ...current, booker_email: value }));
-    if (otpStage !== "idle") resetVerification();
-  }
-
-  function handleAnswerChange(questionId, value) {
-    setForm((current) => ({ ...current, answers: { ...current.answers, [questionId]: value } }));
-  }
-
-  async function handleSendCode() {
-    if (!emailValid) {
-      setTouched((current) => ({ ...current, booker_email: true }));
-      return;
-    }
+  async function sendCode() {
+    if (!emailValid) { setTouched(true); return; }
     setOtpSending(true);
     try {
       const data = await api.requestOtp(form.booker_email.trim());
       setOtpStage("sent");
       setResendIn(data.resend_after_seconds || 60);
-      if (data.dev_code) {
-        setDevCode(data.dev_code);
-        toast.success(`Dev mode: code is ${data.dev_code}`);
-      } else {
-        toast.success("Verification code sent.");
-      }
+      if (data.dev_code) setDevCode(data.dev_code);
+      else toast.success("Verification code sent.");
     } catch (error) {
-      toast.error(error.message || "Could not send code.");
+      toast.error(error.message || "Could not send the code.");
     } finally {
       setOtpSending(false);
     }
   }
 
-  async function handleVerifyCode() {
+  async function verifyCode() {
     if (!otpCode.trim()) return;
     setOtpVerifying(true);
     try {
@@ -364,23 +283,16 @@ export default function PublicBookingPage() {
       setOtpStage("verified");
       toast.success("Email verified.");
     } catch (error) {
-      toast.error(error.message || "Invalid code.");
+      toast.error(error.message || "That code wasn't right.");
     } finally {
       setOtpVerifying(false);
     }
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setTouched({ booker_name: true, booker_email: true });
-    if (!selectedSlot) {
-      toast.error("Please choose a time slot.");
-      return;
-    }
-    if (detailErrors.length > 0 || !isVerified) {
-      toast.error("Please complete your details and verify your email.");
-      return;
-    }
+  async function confirmBooking() {
+    if (!selectedSlot) { toast.error("Pick a time first."); return; }
+    setTouched(true);
+    if (hasErrors || !isVerified) { toast.error("Complete your details and verify your email."); return; }
 
     setSubmitting(true);
     try {
@@ -402,308 +314,271 @@ export default function PublicBookingPage() {
       });
 
       if (booking.manage_token) {
-        // The confirmation screen offers reschedule/cancel without another
-        // round trip; the same link also arrives by email.
         sessionStorage.setItem(`shopper_manage_${booking.id}`, booking.manage_token);
       }
       navigate(`/book/${slug}/confirmed/${booking.id}`);
     } catch (error) {
-      toast.error(error.message || "Could not confirm booking.");
-      if (error.message && /verif/i.test(error.message)) resetVerification();
+      toast.error(error.message || "Could not confirm the booking.");
+      if (/verif/i.test(error.message || "")) resetVerification();
     } finally {
       setSubmitting(false);
     }
   }
 
-  function showError(field) {
-    return touched[field] && errors[field];
-  }
-
-  const selectedDateLabel = new Date(`${selectedDate}T00:00:00`).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
+  const dateLabel = new Date(`${selectedDate}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric",
   });
 
   return (
-    <div className="public-page">
-      <div className="public-topbar">
-        <div className="public-brand">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-          </svg>
-          Shopper
-        </div>
+    <div className="public">
+      <header className="public-bar">
+        <Logo size={28} tile />
         <ThemeToggle />
-      </div>
+      </header>
 
-      <div className="public-layout">
-        <div className="public-info-panel">
-          {loadingEvent ? (
-            <>
-              <Skeleton height={20} width="40%" style={{ marginBottom: 12 }} />
-              <Skeleton height={32} width="80%" style={{ marginBottom: 12 }} />
-              <Skeleton height={14} width="100%" style={{ marginBottom: 6 }} />
-              <Skeleton height={14} width="70%" />
-            </>
-          ) : (
-            <>
-              <div className="public-event-badge" style={{ background: eventType?.accent_color || "var(--accent)" }} />
-              {eventType?.host_name ? <p className="public-host-name">{eventType.host_name}</p> : null}
-              <h1 className="public-event-title">{eventType?.title}</h1>
-              {eventType?.description && <p className="public-event-desc">{eventType.description}</p>}
-              <div className="public-meta-chips">
-                <div className="public-meta-chip">{eventType?.duration} minutes</div>
-                {eventType?.location_type ? (
-                  <div className="public-meta-chip">
-                    {eventType.location || (eventType.location_type === "video" ? "Video call" : eventType.location_type)}
-                  </div>
-                ) : null}
+      <main className="public-main">
+        <div className="booking card">
+          <aside className="booking-aside">
+            {loadingEvent ? (
+              <div className="stack-3">
+                <Skeleton width="40%" height={12} />
+                <Skeleton width="75%" height={22} />
+                <Skeleton width="100%" />
               </div>
-              {eventType?.host_welcome_message ? (
-                <div className="public-help-card">
-                  <p>{eventType.host_welcome_message}</p>
-                </div>
-              ) : (
-                <div className="public-help-card">
-                  <strong>How it works</strong>
-                  <p>Pick a time, verify your email with a one-time code, and you're booked. You can reschedule or cancel later from your confirmation email.</p>
-                </div>
-              )}
-              {selectedSlotObject ? (
-                <div className="booking-summary-preview">
-                  <span>
-                    {formatTimeIn(selectedSlotObject.start_utc, timezone)} &middot; {selectedDateLabel}
+            ) : (
+              <>
+                <span className="booking-accent" style={{ background: eventType?.accent_color || "var(--c-accent)" }} />
+                {eventType?.host_name ? <p className="small subtle">{eventType.host_name}</p> : null}
+                <h1 className="booking-title">{eventType?.title}</h1>
+                {eventType?.description ? <p className="small muted">{eventType.description}</p> : null}
+
+                <div className="row-wrap" style={{ gap: 6, marginTop: "var(--s4)" }}>
+                  <span className="badge"><Icon name="clock" size={12} />{eventType?.duration} min</span>
+                  <span className="badge">
+                    <Icon name={eventType?.location_type === "phone" ? "phone" : eventType?.location_type === "in_person" ? "pin" : "video"} size={12} />
+                    {eventType?.location || (eventType?.location_type === "in_person" ? "In person" : eventType?.location_type === "phone" ? "Phone call" : "Video call")}
                   </span>
                 </div>
-              ) : null}
-            </>
-          )}
-        </div>
 
-        <div className="public-booking-panel">
-          <StepIndicator step={step} />
+                {eventType?.host_welcome_message ? (
+                  <p className="panel small muted" style={{ marginTop: "var(--s5)" }}>{eventType.host_welcome_message}</p>
+                ) : null}
 
-          {step === 0 ? (
-            <div className="booking-step">
-              <div className="step-heading-row">
-                <h3 className="step-heading">Choose a date and time</h3>
-                <TimezoneSelect value={timezone} onChange={setTimezone} />
-              </div>
-
-              <CalendarGrid
-                selectedDate={selectedDate}
-                availableDays={availableDays}
-                loadingDays={loadingDays}
-                onMonthChange={handleMonthChange}
-                onSelectDate={(value) => { setSelectedDate(value); setSelectedSlot(""); }}
-              />
-
-              <div className="slots-section">
-                <h4 className="slots-heading">{selectedDateLabel}</h4>
-                {loadingSlots ? (
-                  <div className="slot-grid">
-                    {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} height={40} />)}
+                {chosenSlot ? (
+                  <div className="booking-chosen">
+                    <p className="tiny subtle">Selected</p>
+                    <p className="small" style={{ fontWeight: 600 }}>
+                      {formatTimeIn(chosenSlot.start_utc, timezone)} · {dateLabel}
+                    </p>
                   </div>
-                ) : slots.length === 0 ? (
-                  <div className="slots-empty"><span>No available times on this day.</span></div>
-                ) : (
-                  <div className="slot-grid" role="radiogroup" aria-label="Available times">
-                    {slots.map((slot) => {
-                      const active = selectedSlot === slot.start_utc;
-                      return (
+                ) : null}
+              </>
+            )}
+          </aside>
+
+          <section className="booking-main">
+            <ol className="steps">
+              {STEPS.map((label, index) => (
+                <li key={label} className={`step${index === step ? " is-active" : ""}${index < step ? " is-done" : ""}`}>
+                  <span className="step-dot">{index < step ? <Icon name="check" size={11} strokeWidth={3} /> : index + 1}</span>
+                  <span className="step-label">{label}</span>
+                </li>
+              ))}
+            </ol>
+
+            {step === 0 && (
+              <div className="stack-4">
+                <div className="row-between" style={{ flexWrap: "wrap" }}>
+                  <h2>Pick a date and time</h2>
+                  <TimezoneSelect value={timezone} onChange={setTimezone} />
+                </div>
+
+                <Calendar
+                  selectedDate={selectedDate}
+                  availableDays={availableDays}
+                  loading={loadingDays}
+                  onMonthChange={handleMonthChange}
+                  onSelectDate={(value) => { setSelectedDate(value); setSelectedSlot(""); }}
+                />
+
+                <div>
+                  <h3 className="small" style={{ marginBottom: "var(--s3)" }}>{dateLabel}</h3>
+                  {loadingSlots ? (
+                    <div className="slot-grid">
+                      {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} height={36} radius="8px" />)}
+                    </div>
+                  ) : slots.length === 0 ? (
+                    <p className="empty small">No open times on this day.</p>
+                  ) : (
+                    <div className="slot-grid" role="radiogroup" aria-label="Available times">
+                      {slots.map((slot) => (
                         <button
                           key={slot.start_utc}
                           type="button"
                           role="radio"
-                          aria-checked={active}
-                          className={active ? "slot-button active" : "slot-button"}
+                          aria-checked={selectedSlot === slot.start_utc}
+                          className={`slot${selectedSlot === slot.start_utc ? " is-active" : ""}`}
                           onClick={() => setSelectedSlot(slot.start_utc)}
                         >
                           {formatTimeIn(slot.start_utc, timezone)}
                         </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="step-actions">
-                <button className="primary-button" disabled={!selectedSlot} onClick={() => setStep(1)}>
-                  Continue
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {step === 1 ? (
-            <div className="booking-step">
-              <button className="step-back-btn" onClick={() => setStep(0)}>Back</button>
-              <h3 className="step-heading">Add your details</h3>
-              <form
-                className="form-grid"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setTouched({ booker_name: true, booker_email: true });
-                  if (detailErrors.length === 0 && isVerified) setStep(2);
-                }}
-                noValidate
-              >
-                <label className="full-width">
-                  Full name
-                  <input
-                    value={form.booker_name}
-                    onChange={(event) => setForm({ ...form, booker_name: event.target.value })}
-                    onBlur={() => setTouched((current) => ({ ...current, booker_name: true }))}
-                    placeholder="Jane Smith"
-                    aria-invalid={showError("booker_name") ? "true" : "false"}
-                  />
-                  {showError("booker_name") && <p className="field-error">{errors.booker_name}</p>}
-                </label>
-
-                <label className="full-width">
-                  Email address
-                  <div className="otp-email-row">
-                    <input
-                      type="email"
-                      value={form.booker_email}
-                      onChange={(event) => handleEmailChange(event.target.value)}
-                      onBlur={() => setTouched((current) => ({ ...current, booker_email: true }))}
-                      placeholder="jane@example.com"
-                      aria-invalid={showError("booker_email") ? "true" : "false"}
-                      disabled={otpStage !== "idle"}
-                    />
-                    {otpStage === "idle" ? (
-                      <button type="button" className="secondary-button" onClick={handleSendCode} disabled={!emailValid || otpSending}>
-                        {otpSending ? "Sending..." : "Send code"}
-                      </button>
-                    ) : (
-                      <button type="button" className="ghost-button" onClick={resetVerification}>Change</button>
-                    )}
-                  </div>
-                  {showError("booker_email") && <p className="field-error">{errors.booker_email}</p>}
-                  {otpStage === "verified" && <p className="otp-success">Email verified</p>}
-                </label>
-
-                {otpStage === "sent" ? (
-                  <label className="full-width">
-                    Verification code
-                    <div className="otp-code-row">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        maxLength={6}
-                        value={otpCode}
-                        onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ""))}
-                        placeholder="000000"
-                        className="otp-code-input"
-                      />
-                      <button type="button" className="primary-button" onClick={handleVerifyCode} disabled={otpCode.length < 4 || otpVerifying}>
-                        {otpVerifying ? "..." : "Verify"}
-                      </button>
+                      ))}
                     </div>
-                    <div className="otp-resend">
-                      {resendIn > 0 ? (
-                        <span>Resend in {resendIn}s</span>
-                      ) : (
-                        <button type="button" className="link-button" onClick={handleSendCode}>Resend code</button>
-                      )}
-                    </div>
-                    {devCode && (
-                      <p className="otp-dev-hint">Dev mode — SMTP not configured. Code: <strong>{devCode}</strong></p>
-                    )}
-                  </label>
-                ) : null}
+                  )}
+                </div>
 
-                {questions.map((question) => (
-                  <QuestionField
-                    key={question.id}
-                    question={question}
-                    value={form.answers?.[question.id]}
-                    onChange={handleAnswerChange}
-                    error={touched.booker_email || touched.booker_name ? errors[`q_${question.id}`] : ""}
-                  />
-                ))}
-
-                <label className="full-width">
-                  Anything else?
-                  <textarea
-                    rows="3"
-                    value={form.notes}
-                    onChange={(event) => setForm({ ...form, notes: event.target.value })}
-                    placeholder="Optional context for the meeting"
-                  />
-                </label>
-
-                <div className="step-actions full-width">
-                  <button type="submit" className="primary-button" disabled={detailErrors.length > 0 || !isVerified}>
-                    Review booking
+                <div className="row-end">
+                  <button className="btn btn-primary" disabled={!selectedSlot} onClick={() => setStep(1)}>
+                    Continue <Icon name="arrowRight" size={14} />
                   </button>
                 </div>
-              </form>
-            </div>
-          ) : null}
+              </div>
+            )}
 
-          {step === 2 ? (
-            <div className="booking-step">
-              <button className="step-back-btn" onClick={() => setStep(1)}>Back</button>
-              <h3 className="step-heading">Confirm your booking</h3>
-              <div className="booking-review-card">
-                <div className="review-row">
-                  <div>
-                    <p className="review-label">Event</p>
-                    <p className="review-value">{eventType?.title}</p>
-                  </div>
-                </div>
-                <div className="review-row">
-                  <div>
-                    <p className="review-label">Date and time</p>
-                    <p className="review-value">
-                      {selectedSlotObject ? formatTimeIn(selectedSlotObject.start_utc, timezone) : ""} &middot;{" "}
-                      {new Date(`${selectedDate}T00:00:00`).toLocaleDateString("en-US", {
-                        weekday: "long", month: "long", day: "numeric", year: "numeric",
-                      })}
-                    </p>
-                    <p className="review-sub">{timezone.replace(/_/g, " ")} ({timezoneOffsetLabel(timezone)})</p>
-                  </div>
-                </div>
-                <div className="review-row">
-                  <div>
-                    <p className="review-label">Guest</p>
-                    <p className="review-value">{form.booker_name} &middot; {form.booker_email}</p>
-                  </div>
-                </div>
-                {questions.map((question) => {
-                  const value = form.answers?.[question.id];
-                  if (!value) return null;
-                  return (
-                    <div className="review-row" key={question.id}>
-                      <div>
-                        <p className="review-label">{question.label}</p>
-                        <p className="review-value">{value}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-                {form.notes ? (
-                  <div className="review-row">
-                    <div>
-                      <p className="review-label">Notes</p>
-                      <p className="review-value">{form.notes}</p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="step-actions">
-                <button className="primary-button" onClick={handleSubmit} disabled={submitting}>
-                  {submitting ? <><span className="btn-spinner" /> Confirming...</> : "Confirm booking"}
+            {step === 1 && (
+              <div className="stack-4">
+                <button className="btn-link" onClick={() => setStep(0)}>
+                  <Icon name="chevronLeft" size={13} /> Back
                 </button>
+                <h2>Your details</h2>
+
+                <form
+                  className="stack-4"
+                  onSubmit={(event) => { event.preventDefault(); setTouched(true); if (!hasErrors && isVerified) setStep(2); }}
+                  noValidate
+                >
+                  <div className="field">
+                    <label className="field-label" htmlFor="name">Full name</label>
+                    <input
+                      id="name" className="input" placeholder="Jane Smith"
+                      value={form.booker_name}
+                      onChange={(event) => setForm({ ...form, booker_name: event.target.value })}
+                      aria-invalid={touched && errors.booker_name ? "true" : "false"}
+                    />
+                    {touched && errors.booker_name && <span className="error-text">{errors.booker_name}</span>}
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="email">Email</label>
+                    <div className="input-group">
+                      <input
+                        id="email" className="input" type="email" placeholder="jane@example.com"
+                        value={form.booker_email}
+                        disabled={otpStage !== "idle"}
+                        onChange={(event) => {
+                          setForm({ ...form, booker_email: event.target.value });
+                          if (otpStage !== "idle") resetVerification();
+                        }}
+                        aria-invalid={touched && errors.booker_email ? "true" : "false"}
+                      />
+                      {otpStage === "idle" ? (
+                        <button type="button" className="btn" onClick={sendCode} disabled={!emailValid || otpSending}>
+                          {otpSending ? <span className="spinner" /> : "Send code"}
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-ghost" onClick={resetVerification}>Change</button>
+                      )}
+                    </div>
+                    {touched && errors.booker_email && <span className="error-text">{errors.booker_email}</span>}
+                    {isVerified && (
+                      <span className="small" style={{ color: "var(--c-ok)", display: "flex", alignItems: "center", gap: 5 }}>
+                        <Icon name="check" size={13} strokeWidth={2.6} /> Email verified
+                      </span>
+                    )}
+                  </div>
+
+                  {otpStage === "sent" && (
+                    <div className="field">
+                      <label className="field-label" htmlFor="otp">Verification code</label>
+                      <div className="input-group">
+                        <input
+                          id="otp" className="input input-otp" inputMode="numeric" autoComplete="one-time-code"
+                          maxLength={6} placeholder="000000" value={otpCode}
+                          onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, ""))}
+                        />
+                        <button type="button" className="btn btn-primary" onClick={verifyCode} disabled={otpCode.length < 4 || otpVerifying}>
+                          {otpVerifying ? <span className="spinner" /> : "Verify"}
+                        </button>
+                      </div>
+                      <span className="hint">
+                        {resendIn > 0
+                          ? `You can resend in ${resendIn}s`
+                          : <button type="button" className="btn-link" onClick={sendCode}>Resend code</button>}
+                      </span>
+                      {devCode && (
+                        <p className="banner banner-warn tiny">
+                          Development mode — SMTP isn't configured. Your code is <strong>{devCode}</strong>.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {questions.map((question) => (
+                    <QuestionField
+                      key={question.id}
+                      question={question}
+                      value={form.answers?.[question.id]}
+                      onChange={(id, value) => setForm((current) => ({ ...current, answers: { ...current.answers, [id]: value } }))}
+                      error={touched ? errors[`q_${question.id}`] : ""}
+                    />
+                  ))}
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="notes">
+                      Anything else? <span className="opt">optional</span>
+                    </label>
+                    <textarea
+                      id="notes" className="textarea" rows="3" placeholder="Context that would help"
+                      value={form.notes}
+                      onChange={(event) => setForm({ ...form, notes: event.target.value })}
+                    />
+                  </div>
+
+                  <div className="row-end">
+                    <button type="submit" className="btn btn-primary" disabled={hasErrors || !isVerified}>
+                      Review <Icon name="arrowRight" size={14} />
+                    </button>
+                  </div>
+                </form>
               </div>
-            </div>
-          ) : null}
+            )}
+
+            {step === 2 && (
+              <div className="stack-4">
+                <button className="btn-link" onClick={() => setStep(1)}>
+                  <Icon name="chevronLeft" size={13} /> Back
+                </button>
+                <h2>Confirm your booking</h2>
+
+                <dl className="dl panel">
+                  <div><dt>Event</dt><dd>{eventType?.title}</dd></div>
+                  <div>
+                    <dt>When</dt>
+                    <dd>
+                      {chosenSlot ? formatTimeIn(chosenSlot.start_utc, timezone) : ""} · {dateLabel}
+                      <span className="tiny subtle" style={{ display: "block", fontWeight: 400 }}>
+                        {timezone.replace(/_/g, " ")} {timezoneOffsetLabel(timezone)}
+                      </span>
+                    </dd>
+                  </div>
+                  <div><dt>Guest</dt><dd>{form.booker_name}<span className="tiny subtle" style={{ display: "block", fontWeight: 400 }}>{form.booker_email}</span></dd></div>
+                  {questions.map((question) => {
+                    const value = form.answers?.[question.id];
+                    return value ? <div key={question.id}><dt>{question.label}</dt><dd>{value}</dd></div> : null;
+                  })}
+                  {form.notes ? <div><dt>Notes</dt><dd>{form.notes}</dd></div> : null}
+                </dl>
+
+                <div className="row-end">
+                  <button className="btn btn-primary btn-lg" onClick={confirmBooking} disabled={submitting}>
+                    {submitting ? <><span className="spinner" /> Confirming…</> : "Confirm booking"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

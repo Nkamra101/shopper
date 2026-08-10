@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import Icon from "./Icon";
 
 const ToastContext = createContext({
   toast: { success: () => {}, error: () => {}, info: () => {} },
@@ -6,29 +7,7 @@ const ToastContext = createContext({
 
 let idCounter = 0;
 
-function Icon({ type }) {
-  if (type === "success") {
-    return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M20 6 9 17l-5-5" />
-      </svg>
-    );
-  }
-  if (type === "error") {
-    return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 8v4M12 16h.01" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4M12 8h.01" />
-    </svg>
-  );
-}
+const TOAST_ICON = { success: "check", error: "alert", info: "info" };
 
 export function ToastProvider({ children }) {
   const [items, setItems] = useState([]);
@@ -70,9 +49,9 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toast-region" role="status" aria-live="polite" aria-atomic="false">
         {items.map((item) => (
-          <div key={item.id} className={`toast ${item.type}`}>
+          <div key={item.id} className={`toast toast-${item.type}`}>
             <span className="toast-icon">
-              <Icon type={item.type} />
+              <Icon name={TOAST_ICON[item.type] || "info"} size={16} strokeWidth={2.4} />
             </span>
             <div className="toast-body">{item.message}</div>
             <button
@@ -81,9 +60,7 @@ export function ToastProvider({ children }) {
               aria-label="Dismiss notification"
               onClick={() => dismiss(item.id)}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
+              <Icon name="close" size={14} strokeWidth={2.4} />
             </button>
           </div>
         ))}
