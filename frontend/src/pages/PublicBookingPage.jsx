@@ -232,7 +232,17 @@ export default function PublicBookingPage() {
     if (!slug) return;
     setLoadingDays(true);
     try {
-      setAvailableDays(new Set(await api.getAvailableDays(slug, monthKey)));
+      const days = await api.getAvailableDays(slug, monthKey);
+      setAvailableDays(new Set(days));
+
+      // Land the visitor on a day that actually has openings. Defaulting to
+      // today shows an empty slot list whenever today is fully booked, past
+      // its cut-off, or simply not a working day.
+      setSelectedDate((current) => {
+        if (days.includes(current)) return current;
+        const next = days.find((day) => day >= toDateInputValue(new Date()));
+        return next || current;
+      });
     } catch {
       setAvailableDays(null); // non-fatal: days just aren't greyed out
     } finally {
@@ -507,7 +517,8 @@ export default function PublicBookingPage() {
                       </span>
                       {devCode && (
                         <p className="banner banner-warn tiny">
-                          Development mode — SMTP isn't configured. Your code is <strong>{devCode}</strong>.
+                          Development mode — SMTP isn&apos;t configured. Your code is{" "}
+                          <strong data-dev-code={devCode}>{devCode}</strong>.
                         </p>
                       )}
                     </div>
