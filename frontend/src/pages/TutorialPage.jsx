@@ -1,219 +1,170 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import SectionCard from "../components/SectionCard";
+import Icon from "../components/Icon";
+import { api } from "../services/api";
 
 const STEPS = [
   {
-    id: "event-types",
-    title: "Create your event types",
-    duration: "2 min",
-    summary: "Define the meeting formats people can book with you.",
-    tasks: [
-      "Open Event Types and create your first booking page.",
-      "Add a clear title, duration, slug, and short description.",
-      "Choose a location type and keep the page active once it is ready.",
-    ],
-    tips: [
-      "Create different event types for quick calls, demos, and deep-dive sessions.",
-      "Use short slugs so links are easy to share.",
-    ],
+    id: "profile",
+    title: "Claim your booking username",
+    body: "Your username becomes your personal link. Pick something short that you'd be happy to say out loud.",
+    to: "/profile",
+    cta: "Open profile",
   },
   {
     id: "availability",
-    title: "Set your availability",
-    duration: "3 min",
-    summary: "Control when guests can see and reserve time.",
-    tasks: [
-      "Pick the correct timezone before opening your calendar.",
-      "Set working hours by weekday and turn off days you do not accept bookings.",
-      "Add blockout dates for holidays, leave, or special closures.",
-    ],
-    tips: [
-      "Use notice periods and buffers to protect your calendar.",
-      "Availability changes apply to the booking pages automatically.",
-    ],
+    title: "Set your weekly hours",
+    body: "Tell Shopper when you're free. Add a second window to any day for a lunch break, and block out holidays in advance.",
+    to: "/availability",
+    cta: "Set availability",
   },
   {
-    id: "booking-portal",
-    title: "Use the booking portal",
-    duration: "2 min",
-    summary: "Create bookings for a person yourself from the admin side.",
-    tasks: [
-      "Go to the Bookings page and open the booking portal at the top.",
-      "Choose an event type, date, and available slot.",
-      "Enter the guest name and email, then add the booking directly.",
-    ],
-    tips: [
-      "This is useful for phone bookings, walk-ins, or requests that arrive over chat.",
-      "You can still let guests use the public page for self-service booking.",
-    ],
+    id: "event",
+    title: "Create an event type",
+    body: "An event type is one kind of meeting — a 30 minute intro, a 60 minute review. Add booking questions if you need context up front.",
+    to: "/dashboard",
+    cta: "Create one",
   },
   {
-    id: "public-booking",
-    title: "Share the public booking page",
-    duration: "1 min",
-    summary: "Let guests book themselves with OTP verification.",
-    tasks: [
-      "Copy the public booking link from the event type card.",
-      "Share it in email, on your website, or in social profiles.",
-      "Guests choose a slot, verify their email, and confirm the booking.",
-    ],
-    tips: [
-      "OTP verification helps prevent fake and low-quality bookings.",
-      "Preview your public page before sharing it broadly.",
-    ],
+    id: "share",
+    title: "Share your link",
+    body: "Copy the booking link and put it in your email signature, your bio, or a calendar invite.",
+    to: "/dashboard",
+    cta: "Get the link",
   },
   {
-    id: "operations",
-    title: "Manage booking operations",
-    duration: "2 min",
-    summary: "Keep the schedule clean once bookings start coming in.",
-    tasks: [
-      "Use the bookings timeline to search, review, and filter meetings.",
-      "Reschedule or cancel from the dashboard when plans change.",
-      "Export bookings to CSV when you need reporting or imports elsewhere.",
-    ],
-    tips: [
-      "The analytics page helps you see when demand is strongest.",
-      "Use integrations when you want bookings to flow into other tools.",
-    ],
+    id: "workflow",
+    title: "Add a reminder",
+    body: "A workflow that emails guests 24 hours before the meeting is the single best way to cut no-shows.",
+    to: "/workflows",
+    cta: "Add a workflow",
   },
 ];
 
-const QUICK_LINKS = [
-  { label: "Open Event Types", to: "/dashboard" },
-  { label: "Open Availability", to: "/availability" },
-  { label: "Open Bookings", to: "/bookings" },
-  { label: "Open Integrations", to: "/integrations" },
-];
-
-const FAQ = [
+const FAQS = [
   {
-    question: "Do guests need an account to book?",
-    answer: "No. Guests can book directly from the public page. They only verify their email with an OTP before confirming the slot.",
+    q: "Do guests need an account?",
+    a: "No. They pick a time and confirm their email with a one-time code. That's the whole flow.",
   },
   {
-    question: "Can I add a booking myself?",
-    answer: "Yes. The booking portal on the Bookings page lets you create a booking for a person manually.",
+    q: "What timezone do guests see?",
+    a: "Their own, detected from the browser, and they can switch it. You always set your hours in your own timezone.",
   },
   {
-    question: "What happens when I cancel a booking?",
-    answer: "The booking is marked cancelled, the slot becomes available again, and your email workflow can notify the guest.",
+    q: "Can someone reschedule without emailing me?",
+    a: "Yes. Every confirmation email carries a private link to reschedule or cancel, and you're notified when they use it.",
   },
   {
-    question: "Can I make different kinds of meeting pages?",
-    answer: "Yes. Create separate event types for every format you offer, each with its own duration, slug, and setup.",
+    q: "Why is the first page load slow sometimes?",
+    a: "The backend runs on a free tier that sleeps when idle. The first request wakes it, which takes a few seconds.",
+  },
+  {
+    q: "How do I get bookings into my own calendar?",
+    a: "Profile → Calendar subscription gives you a private iCal URL that Google, Apple and Outlook can subscribe to.",
   },
 ];
 
 export default function TutorialPage() {
-  const [activeStep, setActiveStep] = useState(0);
-  const [openFaq, setOpenFaq] = useState(null);
-  const currentStep = STEPS[activeStep];
-  const progress = useMemo(() => `${activeStep + 1} / ${STEPS.length}`, [activeStep]);
+  const [state, setState] = useState({ hasUsername: false, hasHours: false, hasEvent: false, hasWorkflow: false });
+  const [open, setOpen] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const [me, availability, eventTypes, workflows] = await Promise.all([
+        api.getMe().catch(() => null),
+        api.getAvailability().catch(() => null),
+        api.getEventTypes().catch(() => []),
+        api.getWorkflows().catch(() => []),
+      ]);
+      setState({
+        hasUsername: Boolean(me?.booking_username),
+        hasHours: Boolean(availability?.rules?.length),
+        hasEvent: eventTypes.length > 0,
+        hasWorkflow: workflows.length > 0,
+      });
+    })();
+  }, []);
+
+  const done = {
+    profile: state.hasUsername,
+    availability: state.hasHours,
+    event: state.hasEvent,
+    share: state.hasEvent,
+    workflow: state.hasWorkflow,
+  };
+  const completed = STEPS.filter((step) => done[step.id]).length;
 
   return (
-    <div className="tutorial-page-shell">
-      <aside className="tutorial-sidebar">
-        <div className="tutorial-sidebar-header">
-          <p className="eyebrow">Onboarding guide</p>
-          <h3>Learn the full Shopper workflow.</h3>
-          <p>Follow the steps in order, then jump into the dashboard when you are ready.</p>
-        </div>
+    <div className="split">
+      <div className="stack">
+        <SectionCard
+          title="Set up your booking page"
+          subtitle="Five steps. You only do this once."
+          actions={<span className="badge">{completed} of {STEPS.length}</span>}
+        >
+          <div className="stack-3">
+            {STEPS.map((step, index) => {
+              const complete = done[step.id];
+              return (
+                <div key={step.id} className="item" style={{ alignItems: "flex-start" }}>
+                  <span className={`step-dot${complete ? " is-complete" : ""}`}
+                        style={complete ? { background: "var(--c-ok)", borderColor: "var(--c-ok)", color: "#fff" } : undefined}>
+                    {complete ? <Icon name="check" size={11} strokeWidth={3} /> : index + 1}
+                  </span>
 
-        <div className="tutorial-progress-box">
-          <span>Progress</span>
-          <strong>{progress}</strong>
-        </div>
+                  <div className="item-main">
+                    <h3 style={{ fontSize: "0.875rem" }}>{step.title}</h3>
+                    <p className="small muted" style={{ marginTop: 3 }}>{step.body}</p>
+                  </div>
 
-        <div className="tutorial-step-list">
-          {STEPS.map((step, index) => (
-            <button
-              key={step.id}
-              type="button"
-              className={`tutorial-step-chip ${index === activeStep ? "active" : ""}`}
-              onClick={() => setActiveStep(index)}
-            >
-              <span className="tutorial-step-chip-index">{index + 1}</span>
-              <span className="tutorial-step-chip-copy">
-                <strong>{step.title}</strong>
-                <span>{step.duration}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="tutorial-quick-links">
-          <p className="tutorial-sidebar-label">Quick links</p>
-          {QUICK_LINKS.map((link) => (
-            <Link key={link.to} to={link.to} className="tutorial-quick-link">
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </aside>
-
-      <div className="tutorial-main">
-        <section className="tutorial-hero-card">
-          <div>
-            <p className="eyebrow">Current step</p>
-            <h3>{currentStep.title}</h3>
-            <p>{currentStep.summary}</p>
-          </div>
-          <div className="tutorial-hero-badge">{currentStep.duration}</div>
-        </section>
-
-        <SectionCard title="What to do" subtitle="Complete these actions inside the app.">
-          <div className="tutorial-task-list">
-            {currentStep.tasks.map((task, index) => (
-              <div key={task} className="tutorial-task-row">
-                <span className="tutorial-task-index">{index + 1}</span>
-                <p>{task}</p>
-              </div>
-            ))}
+                  <Link className="btn btn-sm" to={step.to}>
+                    {complete ? "Review" : step.cta}
+                  </Link>
+                </div>
+              );
+            })}
           </div>
         </SectionCard>
 
-        <SectionCard title="Tips that help" subtitle="Small details that make setup smoother.">
-          <div className="tutorial-tip-grid">
-            {currentStep.tips.map((tip) => (
-              <div key={tip} className="tutorial-tip-card">
-                <span className="tutorial-tip-mark" />
-                <p>{tip}</p>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-
-        <div className="tutorial-navigation-row">
-          <button type="button" className="secondary-button" onClick={() => setActiveStep((step) => Math.max(0, step - 1))} disabled={activeStep === 0}>
-            Previous step
-          </button>
-          {activeStep < STEPS.length - 1 ? (
-            <button type="button" className="primary-button" onClick={() => setActiveStep((step) => Math.min(STEPS.length - 1, step + 1))}>
-              Next step
-            </button>
-          ) : (
-            <Link to="/dashboard" className="primary-button">
-              Go to dashboard
-            </Link>
-          )}
-        </div>
-
-        <SectionCard title="Frequently asked questions" subtitle="Common questions while getting set up.">
-          <div className="tutorial-faq-list">
-            {FAQ.map((item, index) => (
-              <div key={item.question} className="tutorial-faq-card">
-                <button type="button" className="tutorial-faq-trigger" onClick={() => setOpenFaq(openFaq === index ? null : index)}>
-                  <span>{item.question}</span>
-                  <span>{openFaq === index ? "-" : "+"}</span>
+        <SectionCard title="Questions people usually ask">
+          <div className="list-bordered">
+            {FAQS.map((faq, index) => (
+              <div key={faq.q} style={{ borderBottom: index === FAQS.length - 1 ? "none" : "1px solid var(--c-line)" }}>
+                <button
+                  className="list-row"
+                  style={{ width: "100%", textAlign: "left", padding: "var(--s3) var(--s4)" }}
+                  aria-expanded={open === index}
+                  onClick={() => setOpen(open === index ? null : index)}
+                >
+                  <span className="small" style={{ fontWeight: 600 }}>{faq.q}</span>
+                  <Icon name={open === index ? "chevronDown" : "chevronRight"} size={14} />
                 </button>
-                {openFaq === index ? <p className="tutorial-faq-copy">{item.answer}</p> : null}
+                {open === index && (
+                  <p className="small muted" style={{ padding: "0 var(--s4) var(--s4)" }}>{faq.a}</p>
+                )}
               </div>
             ))}
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard title="Good defaults" subtitle="What most people end up doing.">
+        <div className="stack-3">
+          {[
+            "Add a 5–10 minute buffer so back-to-back calls don't collide.",
+            "Set a minimum notice of 2–4 hours so nobody books you in ten minutes.",
+            "Keep the booking window to 30–60 days ahead.",
+            "Send the 24 hour reminder. It's the biggest win for a minute of setup.",
+            "Ask one required question — “what would you like to cover?” — and nothing else.",
+          ].map((tip) => (
+            <div className="row-top" key={tip} style={{ gap: "var(--s2)" }}>
+              <Icon name="check" size={14} strokeWidth={2.6} className="subtle" />
+              <p className="small muted">{tip}</p>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
     </div>
   );
 }

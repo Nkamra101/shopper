@@ -92,7 +92,7 @@ export default function LandingPage() {
                 <div className="preview-body">
                   <div className="preview-side">
                     <span className="preview-accent" />
-                    <p className="tiny subtle">Priya Nair</p>
+                    <p className="tiny subtle">Ananya</p>
                     <p className="preview-title">Intro Call</p>
                     <div className="row-2" style={{ flexWrap: "wrap" }}>
                       <span className="badge">30 min</span>

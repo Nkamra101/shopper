@@ -1,423 +1,249 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../services/api";
-import { useToast } from "../components/Toast";
 import SectionCard from "../components/SectionCard";
+import EmptyState from "../components/EmptyState";
+import Icon from "../components/Icon";
 import { SkeletonStats } from "../components/Skeleton";
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+import { useToast } from "../components/Toast";
+import { api } from "../services/api";
+import { browserTimezone, formatFullIn } from "../utils/date";
 
 const RANGES = [
-  { label: "7 days", days: 7 },
-  { label: "30 days", days: 30 },
-  { label: "90 days", days: 90 },
-  { label: "All time", days: 0 },
+  { value: 7, label: "7 days" },
+  { value: 30, label: "30 days" },
+  { value: 90, label: "90 days" },
 ];
 
-function TrendChart({ data }) {
-  const [hovered, setHovered] = useState(null);
-  const W = 620;
-  const H = 180;
-  const PAD = { top: 16, right: 16, bottom: 28, left: 32 };
-  const max = Math.max(...data.map((p) => p.value), 1);
-  const plotW = W - PAD.left - PAD.right;
-  const plotH = H - PAD.top - PAD.bottom;
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  const pts = data.map((p, i) => ({
-    ...p,
-    x: PAD.left + (i / Math.max(data.length - 1, 1)) * plotW,
-    y: PAD.top + plotH - (p.value / max) * plotH,
+function startOfDay(date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+/** A simple SVG line chart. Deliberately dependency-free. */
+function TrendChart({ points }) {
+  const width = 640;
+  const height = 180;
+  const pad = { top: 14, right: 10, bottom: 22, left: 28 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const max = Math.max(...points.map((point) => point.value), 1);
+
+  const coords = points.map((point, index) => ({
+    ...point,
+    x: pad.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth),
+    y: pad.top + plotHeight - (point.value / max) * plotHeight,
   }));
 
-  const line = pts.map((p) => `${p.x},${p.y}`).join(" ");
-  const area = `${PAD.left},${PAD.top + plotH} ${line} ${W - PAD.right},${PAD.top + plotH}`;
-
-  // Deduped: a small max (say 1) collapses the midpoint onto an endpoint,
-  // which would render two axis lines with the same React key.
-  const yTicks = [...new Set([0, Math.round(max / 2), max])];
-  const xLabels = data.filter((_, i) => i % Math.ceil(data.length / 6) === 0);
+  const line = coords.map((point) => `${point.x},${point.y}`).join(" ");
+  // Deduped: a small max collapses the midpoint onto an endpoint.
+  const ticks = [...new Set([0, Math.round(max / 2), max])];
+  const labelEvery = Math.ceil(points.length / 6);
 
   return (
-    <div className="trend-chart-wrap">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", height: 200 }}>
-        <defs>
-          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {yTicks.map((v) => {
-          const cy = PAD.top + plotH - (v / max) * plotH;
+    <div style={{ overflowX: "auto" }}>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} role="img" aria-label="Bookings over time">
+        {ticks.map((tick) => {
+          const y = pad.top + plotHeight - (tick / max) * plotHeight;
           return (
-            <g key={v}>
-              <line x1={PAD.left} y1={cy} x2={W - PAD.right} y2={cy} stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
-              <text x={PAD.left - 6} y={cy + 4} textAnchor="end" fontSize="10" fill="var(--text-subtle)">{v}</text>
+            <g key={tick}>
+              <line x1={pad.left} y1={y} x2={width - pad.right} y2={y} stroke="var(--c-line)" strokeDasharray="3 4" />
+              <text x={pad.left - 7} y={y + 4} textAnchor="end" fontSize="10" fill="var(--c-ink-3)">{tick}</text>
             </g>
           );
         })}
-        <polygon points={area} fill="url(#trendFill)" />
-        <polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p) => (
-          <circle
-            key={p.label}
-            cx={p.x} cy={p.y} r={hovered === p.label ? 6 : 4}
-            fill={hovered === p.label ? "var(--accent)" : "var(--surface-solid)"}
-            stroke="var(--accent)" strokeWidth="2.5"
-            style={{ cursor: "crosshair", transition: "r 100ms" }}
-            onMouseEnter={() => setHovered(p.label)}
-            onMouseLeave={() => setHovered(null)}
-          />
+
+        <polyline points={line} fill="none" stroke="var(--c-accent)" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round" />
+        {coords.map((point) => (
+          <circle key={point.label} cx={point.x} cy={point.y} r="2.5" fill="var(--c-accent)" />
         ))}
-        {hovered && (() => {
-          const p = pts.find((pt) => pt.label === hovered);
-          if (!p) return null;
-          const bw = 88; const bh = 36; const bx = Math.min(Math.max(p.x - bw / 2, 0), W - bw); const by = p.y - bh - 10;
-          return (
-            <g>
-              <rect x={bx} y={by} width={bw} height={bh} rx="6" fill="var(--surface-solid)" stroke="var(--border)" />
-              <text x={bx + bw / 2} y={by + 14} textAnchor="middle" fontSize="10" fill="var(--text-subtle)">{p.label}</text>
-              <text x={bx + bw / 2} y={by + 28} textAnchor="middle" fontSize="13" fontWeight="700" fill="var(--text)">{p.value} booking{p.value !== 1 ? "s" : ""}</text>
-            </g>
-          );
-        })()}
+
+        {coords.map((point, index) => (
+          index % labelEvery === 0 ? (
+            <text key={`label-${point.label}`} x={point.x} y={height - 6} textAnchor="middle" fontSize="9.5" fill="var(--c-ink-3)">
+              {point.label}
+            </text>
+          ) : null
+        ))}
       </svg>
-      <div className="trend-chart-x-labels">
-        {xLabels.map((p) => <span key={p.label}>{p.label}</span>)}
-      </div>
     </div>
-  );
-}
-
-function BarChart({ data, color = "var(--accent)" }) {
-  const max = Math.max(...data.map((d) => d.value), 1);
-  return (
-    <div className="bar-chart">
-      {data.map((item) => (
-        <div key={item.label} className="bar-chart-row">
-          <span className="bar-chart-label">{item.label}</span>
-          <div className="bar-chart-track">
-            <div
-              className="bar-chart-fill"
-              style={{
-                width: item.value === 0 ? "0%" : `${Math.max(3, Math.round((item.value / max) * 100))}%`,
-                background: color,
-              }}
-            />
-          </div>
-          <span className="bar-chart-value">{item.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StatDelta({ value, prev }) {
-  if (!prev) return null;
-  const pct = prev === 0 ? (value > 0 ? 100 : 0) : Math.round(((value - prev) / prev) * 100);
-  const up = pct >= 0;
-  return (
-    <span className={`stat-delta ${up ? "up" : "down"}`}>
-      {up ? "↑" : "↓"} {Math.abs(pct)}%
-    </span>
   );
 }
 
 export default function AnalyticsPage() {
   const toast = useToast();
-  const [summary, setSummary] = useState(null);
+  const timezone = browserTimezone();
+
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [rangeIndex, setRangeIndex] = useState(1);
+  const [range, setRange] = useState(30);
 
   useEffect(() => {
-    async function load() {
+    (async () => {
       try {
-        const [s, b] = await Promise.all([api.getSummary(), api.getBookings("all")]);
-        setSummary(s);
-        setBookings(b);
-      } catch (err) {
-        toast.error(err.message || "Failed to load analytics.");
+        setBookings(await api.getBookings({ scope: "all" }));
+      } catch (error) {
+        toast.error(error.message || "Could not load analytics.");
       } finally {
         setLoading(false);
       }
-    }
-    load();
+    })();
   }, [toast]);
 
-  const { days: rangeDays, label: rangeLabel } = RANGES[rangeIndex];
+  const inRange = useMemo(() => {
+    const cutoff = startOfDay(new Date());
+    cutoff.setDate(cutoff.getDate() - range);
+    return bookings.filter((booking) => new Date(booking.created_at || booking.start_time) >= cutoff);
+  }, [bookings, range]);
 
-  const analytics = useMemo(() => {
-    const now = new Date();
-    const cutoff = rangeDays > 0 ? new Date(now.getTime() - rangeDays * 86400000) : null;
-    const prevCutoff = rangeDays > 0 ? new Date(now.getTime() - rangeDays * 2 * 86400000) : null;
+  const stats = useMemo(() => {
+    const confirmed = inRange.filter((booking) => booking.status !== "cancelled");
+    const cancelled = inRange.length - confirmed.length;
+    const minutes = confirmed.reduce((total, booking) => total + (booking.event_type?.duration || 0), 0);
+    return {
+      total: inRange.length,
+      confirmed: confirmed.length,
+      cancelled,
+      hours: Math.round((minutes / 60) * 10) / 10,
+      rate: inRange.length ? Math.round((confirmed.length / inRange.length) * 100) : 0,
+    };
+  }, [inRange]);
 
-    const inRange = (b) => !cutoff || new Date(b.start_time) >= cutoff;
-    const inPrev = (b) => prevCutoff && new Date(b.start_time) >= prevCutoff && new Date(b.start_time) < cutoff;
-
-    const filtered = bookings.filter(inRange);
-    const prevPeriod = bookings.filter(inPrev);
-
-    const confirmed = filtered.filter((b) => b.status === "confirmed");
-    const cancelled = filtered.filter((b) => b.status === "cancelled");
-    const prevConfirmed = prevPeriod.filter((b) => b.status === "confirmed");
-
-    const totalMinutes = confirmed.reduce((s, b) => s + (b.event_type?.duration || 0), 0);
-    const avgDuration = confirmed.length ? Math.round(totalMinutes / confirmed.length) : 0;
-
-    const spanDays = rangeDays || 90;
-    const trendMap = new Map();
-    for (let i = spanDays - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      trendMap.set(d.toISOString().slice(0, 10), 0);
+  const trend = useMemo(() => {
+    const buckets = new Map();
+    for (let index = range - 1; index >= 0; index -= 1) {
+      const day = startOfDay(new Date());
+      day.setDate(day.getDate() - index);
+      buckets.set(day.toISOString().slice(0, 10), 0);
     }
-    filtered.forEach((b) => {
-      const key = b.start_time?.slice(0, 10);
-      if (key && trendMap.has(key)) trendMap.set(key, (trendMap.get(key) || 0) + 1);
+    inRange.forEach((booking) => {
+      const key = new Date(booking.created_at || booking.start_time).toISOString().slice(0, 10);
+      if (buckets.has(key)) buckets.set(key, buckets.get(key) + 1);
     });
-
-    const dayCounts = Array(7).fill(0);
-    const hourCounts = Array(24).fill(0);
-    const heatmap = Array.from({ length: 7 }, () => Array(24).fill(0));
-    const etCounts = {};
-
-    filtered.forEach((b) => {
-      const d = new Date(b.start_time);
-      const wd = (d.getDay() + 6) % 7;
-      const hr = d.getHours();
-      dayCounts[wd]++;
-      hourCounts[hr]++;
-      heatmap[wd][hr]++;
-      const t = b.event_type?.title || "Unknown";
-      etCounts[t] = (etCounts[t] || 0) + 1;
-    });
-
-    const topEventTypes = Object.entries(etCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([title, count]) => ({ title, count }));
-
-    const bestDayIdx = dayCounts.indexOf(Math.max(...dayCounts, 0));
-    const bestHourIdx = hourCounts.indexOf(Math.max(...hourCounts, 0));
-
-    const topHours = hourCounts
-      .map((v, i) => ({ hour: i, value: v }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 8)
-      .sort((a, b) => a.hour - b.hour)
-      .map(({ hour, value }) => ({
-        label: `${hour.toString().padStart(2, "0")}:00`,
-        value,
-      }));
-
-    const recentBookings = [...bookings]
-      .sort((a, b) => new Date(b.start_time) - new Date(a.start_time))
-      .slice(0, 8);
-
-    const rate = filtered.length ? Math.round((confirmed.length / filtered.length) * 100) : 0;
-    const cancelRate = filtered.length ? Math.round((cancelled.length / filtered.length) * 100) : 0;
-
-    const trend = [...trendMap.entries()].map(([date, value]) => ({
-      label: date.slice(5),
+    return [...buckets.entries()].map(([key, value]) => ({
+      label: new Date(`${key}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       value,
     }));
+  }, [inRange, range]);
 
-    return {
-      total: filtered.length,
-      confirmed: confirmed.length,
-      cancelled: cancelled.length,
-      prevConfirmed: prevConfirmed.length,
-      avgDuration,
-      rate,
-      cancelRate,
-      bestDay: filtered.length ? DAYS[bestDayIdx] : "—",
-      bestHour: filtered.length ? `${bestHourIdx.toString().padStart(2, "0")}:00` : "—",
-      trend,
-      dayBreakdown: DAYS.map((l, i) => ({ label: l, value: dayCounts[i] })),
-      topHours,
-      heatmap,
-      heatmapMax: Math.max(...heatmap.flat(), 1),
-      topEventTypes,
-      recentBookings,
-    };
-  }, [bookings, rangeDays]);
+  const topEvents = useMemo(() => {
+    const counts = new Map();
+    inRange.forEach((booking) => {
+      const title = booking.event_type?.title || "Unknown";
+      counts.set(title, (counts.get(title) || 0) + 1);
+    });
+    const max = Math.max(...counts.values(), 1);
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([title, count]) => ({ title, count, percent: Math.round((count / max) * 100) }));
+  }, [inRange]);
 
-  if (loading) {
-    return (
-      <div className="stack">
-        <SkeletonStats />
-        <SkeletonStats />
-      </div>
-    );
-  }
+  const byWeekday = useMemo(() => {
+    const counts = Array(7).fill(0);
+    inRange.forEach((booking) => {
+      const index = (new Date(booking.start_time).getDay() + 6) % 7;
+      counts[index] += 1;
+    });
+    const max = Math.max(...counts, 1);
+    return counts.map((count, index) => ({
+      label: DAY_LABELS[index], count, percent: Math.round((count / max) * 100),
+    }));
+  }, [inRange]);
+
+  const recent = useMemo(
+    () => [...inRange].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6),
+    [inRange]
+  );
+
+  if (loading) return <div className="stack"><SkeletonStats /></div>;
 
   return (
     <div className="stack">
-      {/* Hero */}
-      <section className="analytics-hero">
-        <div className="analytics-hero-copy">
-          <p className="eyebrow">Booking intelligence</p>
-          <h3>See what's driving your calendar.</h3>
-          <p>Track momentum, peak demand, top meeting types, and where guests engage most.</p>
-        </div>
-        <div className="analytics-hero-summary">
-          <div className="analytics-hero-pill">
-            <span className="status-dot" />
-            {analytics.rate}% confirmation rate in this period
-          </div>
-          <div className="analytics-hero-grid">
-            {[
-              { label: "Total bookings", value: analytics.total },
-              { label: "Confirmed", value: analytics.confirmed },
-              { label: "Avg. duration", value: `${analytics.avgDuration} min` },
-              { label: "Peak day", value: analytics.bestDay },
-            ].map((item) => (
-              <div key={item.label} className="analytics-hero-card">
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Range picker + KPIs */}
-      <div className="analytics-controls-row">
-        <div className="analytics-range-pills">
-          {RANGES.map((r, i) => (
-            <button
-              key={r.label}
-              type="button"
-              className={`analytics-range-pill ${i === rangeIndex ? "active" : ""}`}
-              onClick={() => setRangeIndex(i)}
-            >
-              {r.label}
+      <div className="toolbar">
+        <p className="small muted">Based on bookings created in the selected window.</p>
+        <div className="seg" role="tablist">
+          {RANGES.map((item) => (
+            <button key={item.value} type="button" role="tab" className="seg-item"
+                    aria-selected={range === item.value} onClick={() => setRange(item.value)}>
+              {item.label}
             </button>
           ))}
         </div>
-        <span className="analytics-range-hint">Showing data for: <strong>{rangeLabel}</strong></span>
       </div>
 
-      <div className="kpi-grid analytics-kpi-grid">
-        {[
-          { label: "Confirmed", value: analytics.confirmed, tone: "var(--success)", prev: analytics.prevConfirmed },
-          { label: "Cancelled", value: analytics.cancelled, tone: "var(--danger)" },
-          { label: "Confirmation rate", value: `${analytics.rate}%`, tone: "var(--accent)" },
-          { label: "Cancellation rate", value: `${analytics.cancelRate}%`, tone: "#b45309" },
-          { label: "Peak booking hour", value: analytics.bestHour, tone: "var(--accent)" },
-          { label: "Event types", value: summary?.event_types_count ?? 0, tone: "#0f766e" },
-        ].map((item) => (
-          <div key={item.label} className="kpi-card analytics-kpi-card">
-            <div className="kpi-value" style={{ color: item.tone }}>{item.value}</div>
-            <div className="kpi-label">{item.label}</div>
-            {item.prev !== undefined && (
-              <StatDelta value={item.value} prev={item.prev} />
-            )}
-          </div>
-        ))}
+      <div className="grid-auto">
+        <div className="card stat"><p className="stat-label">Bookings</p><p className="stat-value">{stats.total}</p></div>
+        <div className="card stat"><p className="stat-label">Confirmed</p><p className="stat-value">{stats.confirmed}</p></div>
+        <div className="card stat"><p className="stat-label">Cancelled</p><p className="stat-value">{stats.cancelled}</p></div>
+        <div className="card stat"><p className="stat-label">Hours booked</p><p className="stat-value">{stats.hours}</p></div>
+        <div className="card stat"><p className="stat-label">Kept</p><p className="stat-value">{stats.rate}%</p></div>
       </div>
 
-      {/* Trend chart */}
-      <SectionCard title="Booking trend" subtitle={`Daily volume — last ${rangeLabel}.`}>
-        {analytics.total === 0 ? (
-          <div className="chart-empty">No bookings in this period. Share your booking links to start collecting data.</div>
-        ) : (
-          <TrendChart data={analytics.trend} />
-        )}
-      </SectionCard>
-
-      {/* Main grid */}
-      <div className="analytics-dashboard-grid">
-        <SectionCard title="Busiest weekdays" subtitle="Which days generate the most bookings.">
-          <BarChart data={analytics.dayBreakdown} color="var(--accent)" />
+      {inRange.length === 0 ? (
+        <SectionCard title="Nothing to chart yet">
+          <EmptyState
+            icon="chart"
+            title="No bookings in this window"
+            description="Once people start booking, you'll see volume, popular days and your busiest event types here."
+          />
         </SectionCard>
+      ) : (
+        <>
+          <SectionCard title="Booking volume" subtitle={`New bookings over the last ${range} days.`}>
+            <TrendChart points={trend} />
+          </SectionCard>
 
-        <SectionCard title="Top event types" subtitle="Your most-booked meeting formats.">
-          {analytics.topEventTypes.length === 0 ? (
-            <div className="chart-empty">Your most-booked event types appear here.</div>
-          ) : (
-            <div className="analytics-rank-list">
-              {analytics.topEventTypes.map((item, i) => (
-                <div key={item.title} className="analytics-rank-row">
-                  <span className="analytics-rank-badge">#{i + 1}</span>
-                  <div className="analytics-rank-copy">
-                    <strong>{item.title}</strong>
-                    <span>{item.count} booking{item.count !== 1 ? "s" : ""}</span>
+          <div className="grid-2">
+            <SectionCard title="Busiest event types">
+              <div className="bars">
+                {topEvents.map((item) => (
+                  <div className="bar-row" key={item.title}>
+                    <span className="truncate" title={item.title}>{item.title}</span>
+                    <span className="bar-track"><span className="bar-fill" style={{ width: `${item.percent}%` }} /></span>
+                    <span className="num subtle" style={{ textAlign: "right" }}>{item.count}</span>
                   </div>
-                  <span className="analytics-rank-bar-wrap">
-                    <span
-                      className="analytics-rank-bar"
-                      style={{ width: `${Math.round((item.count / analytics.topEventTypes[0].count) * 100)}%` }}
-                    />
+                ))}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Busiest weekdays">
+              <div className="bars">
+                {byWeekday.map((item) => (
+                  <div className="bar-row" key={item.label}>
+                    <span>{item.label}</span>
+                    <span className="bar-track"><span className="bar-fill" style={{ width: `${item.percent}%` }} /></span>
+                    <span className="num subtle" style={{ textAlign: "right" }}>{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <SectionCard title="Latest bookings">
+            <div className="list">
+              {recent.map((booking) => (
+                <div className="list-row" key={booking.id}>
+                  <div className="row-2" style={{ minWidth: 0 }}>
+                    <span className="avatar" style={{ width: 26, height: 26, fontSize: "0.625rem" }}>
+                      {(booking.booker_name || "?").slice(0, 1).toUpperCase()}
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <p className="small truncate" style={{ fontWeight: 600 }}>{booking.booker_name}</p>
+                      <p className="tiny subtle truncate">{booking.event_type?.title}</p>
+                    </div>
+                  </div>
+                  <span className="tiny subtle" style={{ whiteSpace: "nowrap" }}>
+                    {formatFullIn(booking.start_time, timezone)}
                   </span>
                 </div>
               ))}
             </div>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Booking heatmap" subtitle="Day × hour — darker means more activity.">
-          <div className="analytics-heatmap-shell">
-            <div className="analytics-heatmap-days">
-              {DAYS.map((d) => <span key={d}>{d}</span>)}
-            </div>
-            <div className="analytics-heatmap-grid">
-              {analytics.heatmap.map((row, ri) => (
-                <div key={DAYS[ri]} className="analytics-heatmap-row">
-                  {row.map((v, ci) => {
-                    const alpha = analytics.heatmapMax ? 0.06 + (v / analytics.heatmapMax) * 0.84 : 0.06;
-                    return (
-                      <div
-                        key={`${ri}-${ci}`}
-                        className="analytics-heatmap-cell"
-                        style={{ background: v > 0 ? `rgba(99,102,241,${alpha})` : "var(--surface-muted)" }}
-                        title={v > 0 ? `${DAYS[ri]} ${ci.toString().padStart(2,"0")}:00 — ${v} booking${v !== 1 ? "s" : ""}` : undefined}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="heatmap-legend">
-            <span>Less</span>
-            {[0.06, 0.25, 0.5, 0.75, 0.9].map((a) => (
-              <span key={a} className="heatmap-legend-cell" style={{ background: `rgba(99,102,241,${a})` }} />
-            ))}
-            <span>More</span>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Recent activity" subtitle="Latest bookings across all event types.">
-          {analytics.recentBookings.length === 0 ? (
-            <div className="chart-empty">Recent bookings will appear here.</div>
-          ) : (
-            <div className="analytics-activity-list">
-              {analytics.recentBookings.map((b) => (
-                <div key={b.id} className="analytics-activity-row">
-                  <div className="analytics-activity-avatar">{(b.booker_name?.[0] || "?").toUpperCase()}</div>
-                  <div className="analytics-activity-copy">
-                    <strong>{b.booker_name}</strong>
-                    <span>{b.event_type?.title || "Unknown event type"}</span>
-                  </div>
-                  <div className="analytics-activity-meta">
-                    <span>{new Date(b.start_time).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                    <span className={`status-pill ${b.status}`}>{b.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionCard>
-      </div>
-
-      {/* Peak hours bar */}
-      <SectionCard title="Peak booking hours" subtitle="Top hours with the most confirmed meetings.">
-        {analytics.topHours.every((h) => h.value === 0) ? (
-          <div className="chart-empty">No hourly data yet.</div>
-        ) : (
-          <BarChart data={analytics.topHours} color="linear-gradient(90deg, var(--accent), #06b6d4)" />
-        )}
-      </SectionCard>
+          </SectionCard>
+        </>
+      )}
     </div>
   );
 }

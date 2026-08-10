@@ -1,66 +1,50 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionCard from "../components/SectionCard";
+import Icon from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { api } from "../services/api";
 import { browserTimezone, toDateInputValue } from "../utils/date";
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-/** One editable row. Each day owns a list of windows, so lunch breaks work. */
-const emptyDay = (index) => ({ day_of_week: index, is_active: index < 5, windows: [] });
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const makeWindow = (start, end) => ({ start_time: start, end_time: end });
 
-function buildDays(makeWindows, isActive) {
-  return DAY_NAMES.map((_, index) => ({
+function buildWeek(windowsFor, isOn) {
+  return DAYS.map((_, index) => ({
     day_of_week: index,
-    is_active: isActive(index),
-    windows: isActive(index) ? makeWindows(index) : [],
+    is_active: isOn(index),
+    windows: isOn(index) ? windowsFor(index) : [],
   }));
 }
 
 const PRESETS = [
-  {
-    label: "Weekdays 9–5",
-    build: () => buildDays(() => [makeWindow("09:00", "17:00")], (i) => i < 5),
-  },
-  {
-    label: "Weekdays 9–5, lunch 1–2",
-    build: () => buildDays(() => [makeWindow("09:00", "13:00"), makeWindow("14:00", "17:00")], (i) => i < 5),
-  },
-  {
-    label: "Mornings only",
-    build: () => buildDays(() => [makeWindow("08:00", "12:00")], (i) => i < 5),
-  },
-  {
-    label: "All week 10–6",
-    build: () => buildDays(() => [makeWindow("10:00", "18:00")], () => true),
-  },
+  { label: "Weekdays 9–5", build: () => buildWeek(() => [makeWindow("09:00", "17:00")], (i) => i < 5) },
+  { label: "Weekdays, lunch break", build: () => buildWeek(() => [makeWindow("09:00", "13:00"), makeWindow("14:00", "17:00")], (i) => i < 5) },
+  { label: "Mornings only", build: () => buildWeek(() => [makeWindow("08:00", "12:00")], (i) => i < 5) },
+  { label: "Every day 10–6", build: () => buildWeek(() => [makeWindow("10:00", "18:00")], () => true) },
 ];
 
-const DEFAULT_DAYS = PRESETS[0].build();
+const DEFAULT_WEEK = PRESETS[0].build();
 
-/** Flat API rules -> one row per weekday holding its windows. */
-function rulesToDays(rules) {
-  const days = DAY_NAMES.map((_, index) => emptyDay(index));
+function rulesToWeek(rules) {
+  const week = DAYS.map((_, index) => ({ day_of_week: index, is_active: false, windows: [] }));
   rules.forEach((rule) => {
-    const day = days[rule.day_of_week];
+    const day = week[rule.day_of_week];
     if (!day) return;
     day.windows.push({
       start_time: String(rule.start_time).slice(0, 5),
       end_time: String(rule.end_time).slice(0, 5),
     });
   });
-  days.forEach((day) => {
+  week.forEach((day) => {
     day.windows.sort((a, b) => a.start_time.localeCompare(b.start_time));
     day.is_active = day.windows.length > 0;
   });
-  return days;
+  return week;
 }
 
-function daysToRules(days) {
-  return days.flatMap((day) =>
+function weekToRules(week) {
+  return week.flatMap((day) =>
     day.is_active
       ? day.windows.map((slot) => ({
           day_of_week: day.day_of_week,
@@ -72,186 +56,144 @@ function daysToRules(days) {
   );
 }
 
-/** Returns a human-readable problem with the schedule, or "". */
-function validateDays(days) {
-  for (const day of days) {
+/** Human-readable problem with the schedule, or "" when it's valid. */
+function findProblem(week) {
+  for (const day of week) {
     if (!day.is_active) continue;
-    if (day.windows.length === 0) {
-      return `${DAY_NAMES[day.day_of_week]} is switched on but has no hours. Add a window or switch it off.`;
-    }
+    if (day.windows.length === 0) return `${DAYS[day.day_of_week]} is on but has no hours.`;
     for (const slot of day.windows) {
-      if (!slot.start_time || !slot.end_time) {
-        return `${DAY_NAMES[day.day_of_week]}: fill in both times.`;
-      }
-      if (slot.start_time >= slot.end_time) {
-        return `${DAY_NAMES[day.day_of_week]}: ${slot.start_time} to ${slot.end_time} ends before it starts.`;
-      }
+      if (!slot.start_time || !slot.end_time) return `${DAYS[day.day_of_week]}: fill in both times.`;
+      if (slot.start_time >= slot.end_time) return `${DAYS[day.day_of_week]}: ${slot.start_time}–${slot.end_time} ends before it starts.`;
     }
     const sorted = [...day.windows].sort((a, b) => a.start_time.localeCompare(b.start_time));
     for (let i = 1; i < sorted.length; i += 1) {
       if (sorted[i].start_time < sorted[i - 1].end_time) {
-        return `${DAY_NAMES[day.day_of_week]}: two windows overlap. Give each its own block of time.`;
+        return `${DAYS[day.day_of_week]}: two windows overlap.`;
       }
     }
   }
   return "";
 }
 
-function formatRange(start, end) {
-  const label = (value) => new Date(`2000-01-01T${value}:00`).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  return `${label(start)} – ${label(end)}`;
-}
-
 export default function AvailabilityPage() {
   const toast = useToast();
   const [timezone, setTimezone] = useState("Asia/Kolkata");
-  const [timezoneOptions, setTimezoneOptions] = useState([]);
-  const [days, setDays] = useState(DEFAULT_DAYS);
+  const [zones, setZones] = useState([]);
+  const [week, setWeek] = useState(DEFAULT_WEEK);
   const [blockouts, setBlockouts] = useState([]);
-  const [newBlockout, setNewBlockout] = useState({ start_date: "", end_date: "", reason: "" });
+  const [draft, setDraft] = useState({ start_date: "", end_date: "", reason: "" });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    async function load() {
+    (async () => {
       try {
-        const [availability, blockoutData] = await Promise.all([
-          api.getAvailability(),
-          api.getBlockouts(),
-        ]);
+        const [availability, blocks] = await Promise.all([api.getAvailability(), api.getBlockouts()]);
         setTimezone(availability.timezone);
-        setDays(availability.rules.length ? rulesToDays(availability.rules) : DEFAULT_DAYS);
-        setBlockouts(blockoutData);
+        setWeek(availability.rules.length ? rulesToWeek(availability.rules) : DEFAULT_WEEK);
+        setBlockouts(blocks);
       } catch (error) {
-        toast.error(error.message || "Failed to load availability.");
+        toast.error(error.message || "Could not load your availability.");
       } finally {
         setLoading(false);
       }
-    }
-    load();
+    })();
   }, [toast]);
 
   useEffect(() => {
-    // Non-critical: the field falls back to free text if this fails.
-    api.getTimezones().then(setTimezoneOptions).catch(() => setTimezoneOptions([]));
+    api.getTimezones().then(setZones).catch(() => setZones([]));
   }, []);
 
-  const activeDays = useMemo(() => days.filter((day) => day.is_active).length, [days]);
+  const activeDays = useMemo(() => week.filter((day) => day.is_active).length, [week]);
   const weeklyHours = useMemo(() => {
-    const minutes = days.reduce((total, day) => {
+    const minutes = week.reduce((total, day) => {
       if (!day.is_active) return total;
-      return total + day.windows.reduce((dayTotal, slot) => {
-        if (!slot.start_time || !slot.end_time) return dayTotal;
+      return total + day.windows.reduce((sum, slot) => {
+        if (!slot.start_time || !slot.end_time) return sum;
         const [sh, sm] = slot.start_time.split(":").map(Number);
         const [eh, em] = slot.end_time.split(":").map(Number);
-        return dayTotal + Math.max(0, eh * 60 + em - (sh * 60 + sm));
+        return sum + Math.max(0, eh * 60 + em - (sh * 60 + sm));
       }, 0);
     }, 0);
     return Math.round((minutes / 60) * 10) / 10;
-  }, [days]);
+  }, [week]);
 
-  function updateDay(dayIndex, changes) {
-    setDays((current) =>
-      current.map((day, index) => (index === dayIndex ? { ...day, ...changes } : day))
-    );
+  function updateDay(index, changes) {
+    setWeek((current) => current.map((day, i) => (i === index ? { ...day, ...changes } : day)));
   }
 
-  function toggleDay(dayIndex, isActive) {
-    setDays((current) =>
-      current.map((day, index) => {
-        if (index !== dayIndex) return day;
-        // Turning a blank day on should give it something to edit.
-        const windows = isActive && day.windows.length === 0 ? [makeWindow("09:00", "17:00")] : day.windows;
-        return { ...day, is_active: isActive, windows };
-      })
-    );
+  function toggleDay(index, on) {
+    setWeek((current) => current.map((day, i) => {
+      if (i !== index) return day;
+      const windows = on && day.windows.length === 0 ? [makeWindow("09:00", "17:00")] : day.windows;
+      return { ...day, is_active: on, windows };
+    }));
   }
 
   function updateWindow(dayIndex, windowIndex, changes) {
-    setDays((current) =>
-      current.map((day, index) => {
-        if (index !== dayIndex) return day;
-        return {
-          ...day,
-          windows: day.windows.map((slot, i) => (i === windowIndex ? { ...slot, ...changes } : slot)),
-        };
-      })
-    );
+    setWeek((current) => current.map((day, i) => (i === dayIndex
+      ? { ...day, windows: day.windows.map((slot, j) => (j === windowIndex ? { ...slot, ...changes } : slot)) }
+      : day)));
   }
 
   function addWindow(dayIndex) {
-    setDays((current) =>
-      current.map((day, index) => {
-        if (index !== dayIndex) return day;
-        const last = day.windows[day.windows.length - 1];
-        // Start the new window an hour after the previous one ends.
-        const start = last ? last.end_time : "09:00";
-        const [hour, minute] = start.split(":").map(Number);
-        const nextStart = `${String(Math.min(22, hour + 1)).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-        const nextEnd = `${String(Math.min(23, hour + 4)).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-        return { ...day, is_active: true, windows: [...day.windows, makeWindow(nextStart, nextEnd)] };
-      })
-    );
+    setWeek((current) => current.map((day, i) => {
+      if (i !== dayIndex) return day;
+      const last = day.windows[day.windows.length - 1];
+      const [hour, minute] = (last ? last.end_time : "09:00").split(":").map(Number);
+      const pad = (n) => String(Math.min(23, n)).padStart(2, "0");
+      return {
+        ...day,
+        is_active: true,
+        windows: [...day.windows, makeWindow(`${pad(hour + 1)}:${String(minute).padStart(2, "0")}`, `${pad(hour + 4)}:${String(minute).padStart(2, "0")}`)],
+      };
+    }));
   }
 
   function removeWindow(dayIndex, windowIndex) {
-    setDays((current) =>
-      current.map((day, index) => {
-        if (index !== dayIndex) return day;
-        const windows = day.windows.filter((_, i) => i !== windowIndex);
-        return { ...day, windows, is_active: windows.length > 0 ? day.is_active : false };
-      })
-    );
+    setWeek((current) => current.map((day, i) => {
+      if (i !== dayIndex) return day;
+      const windows = day.windows.filter((_, j) => j !== windowIndex);
+      return { ...day, windows, is_active: windows.length > 0 && day.is_active };
+    }));
   }
 
   function copyToWeekdays(dayIndex) {
-    const source = days[dayIndex];
-    setDays((current) =>
-      current.map((day) =>
-        day.day_of_week < 5
-          ? { ...day, is_active: source.is_active, windows: source.windows.map((slot) => ({ ...slot })) }
-          : day
-      )
-    );
+    const source = week[dayIndex];
+    setWeek((current) => current.map((day) => (day.day_of_week < 5
+      ? { ...day, is_active: source.is_active, windows: source.windows.map((slot) => ({ ...slot })) }
+      : day)));
     toast.success("Copied to every weekday.");
   }
 
-  async function handleSave(event) {
+  async function save(event) {
     event.preventDefault();
-    const problem = validateDays(days);
-    if (problem) {
-      toast.error(problem);
-      return;
-    }
+    const problem = findProblem(week);
+    if (problem) { toast.error(problem); return; }
 
     setSaving(true);
     try {
-      const saved = await api.updateAvailability({ timezone, rules: daysToRules(days) });
-      setDays(saved.rules.length ? rulesToDays(saved.rules) : days);
+      const saved = await api.updateAvailability({ timezone, rules: weekToRules(week) });
+      setWeek(saved.rules.length ? rulesToWeek(saved.rules) : week);
       toast.success("Availability saved.");
     } catch (error) {
-      toast.error(error.message || "Could not save availability.");
+      toast.error(error.message || "Could not save your availability.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleAddBlockout(event) {
+  async function addBlockout(event) {
     event.preventDefault();
-    if (!newBlockout.start_date) return;
+    if (!draft.start_date) return;
     try {
-      const added = await api.createBlockout({
-        start_date: newBlockout.start_date,
-        end_date: newBlockout.end_date || newBlockout.start_date,
-        reason: newBlockout.reason,
+      const created = await api.createBlockout({
+        start_date: draft.start_date,
+        end_date: draft.end_date || draft.start_date,
+        reason: draft.reason,
       });
-      setBlockouts((current) =>
-        [...current, added].sort((left, right) => left.start_date.localeCompare(right.start_date))
-      );
-      setNewBlockout({ start_date: "", end_date: "", reason: "" });
+      setBlockouts((current) => [...current, created].sort((a, b) => a.start_date.localeCompare(b.start_date)));
+      setDraft({ start_date: "", end_date: "", reason: "" });
       toast.success("Dates blocked.");
     } catch (error) {
       toast.error(error.message || "Could not block those dates.");
@@ -262,201 +204,157 @@ export default function AvailabilityPage() {
     try {
       await api.deleteBlockout(id);
       setBlockouts((current) => current.filter((item) => item.id !== id));
-      toast.success("Blockout removed.");
     } catch (error) {
-      toast.error(error.message || "Could not remove blockout.");
+      toast.error(error.message || "Could not remove that blockout.");
     }
   }
 
-  function detectTimezone() {
-    const detected = browserTimezone();
-    setTimezone(detected);
-    toast.success(`Timezone set to ${detected}.`);
-  }
-
   const today = toDateInputValue(new Date());
+  const dateOptions = { weekday: "short", month: "short", day: "numeric", year: "numeric" };
 
   return (
     <div className="stack">
-      <section className="availability-hero">
-        <div>
-          <p className="eyebrow">Availability</p>
-          <h3>When can people book you?</h3>
-          <p>Set recurring hours, add breaks within a day, and block out time you're away.</p>
-        </div>
-        <div className="availability-hero-stats">
-          <div className="availability-hero-card">
-            <span>Active days</span>
-            <strong>{activeDays}</strong>
-          </div>
-          <div className="availability-hero-card">
-            <span>Hours / week</span>
-            <strong>{weeklyHours}</strong>
-          </div>
-          <div className="availability-hero-card">
-            <span>Blockouts</span>
-            <strong>{blockouts.length}</strong>
-          </div>
-        </div>
-      </section>
+      <div className="grid-auto">
+        <div className="card stat"><p className="stat-label">Active days</p><p className="stat-value">{activeDays}</p></div>
+        <div className="card stat"><p className="stat-label">Hours per week</p><p className="stat-value">{weeklyHours}</p></div>
+        <div className="card stat"><p className="stat-label">Blockouts</p><p className="stat-value">{blockouts.length}</p></div>
+      </div>
 
-      <SectionCard title="Weekly schedule" subtitle="Add more than one window to a day for a lunch break or split shift.">
-        <form className="stack" onSubmit={handleSave}>
-          <div className="availability-toolbar">
-            <label className="availability-timezone-field">
-              Timezone
-              {timezoneOptions.length ? (
-                <select value={timezone} onChange={(event) => setTimezone(event.target.value)} disabled={loading}>
-                  {(timezoneOptions.includes(timezone) ? timezoneOptions : [timezone, ...timezoneOptions]).map((zone) => (
+      <SectionCard
+        title="Weekly schedule"
+        subtitle="Add more than one window to a day for a lunch break or split shift."
+      >
+        <form className="stack-4" onSubmit={save}>
+          <div className="row-wrap" style={{ alignItems: "flex-end" }}>
+            <div className="field" style={{ flex: "0 1 320px" }}>
+              <label className="field-label" htmlFor="tz">Timezone</label>
+              {zones.length ? (
+                <select id="tz" className="select" value={timezone} disabled={loading}
+                        onChange={(event) => setTimezone(event.target.value)}>
+                  {(zones.includes(timezone) ? zones : [timezone, ...zones]).map((zone) => (
                     <option key={zone} value={zone}>{zone.replace(/_/g, " ")}</option>
                   ))}
                 </select>
               ) : (
-                <input value={timezone} onChange={(event) => setTimezone(event.target.value)} disabled={loading} />
+                <input id="tz" className="input" value={timezone} disabled={loading}
+                       onChange={(event) => setTimezone(event.target.value)} />
               )}
-            </label>
-            <button type="button" className="secondary-button" onClick={detectTimezone}>
+            </div>
+            <button type="button" className="btn" onClick={() => {
+              const detected = browserTimezone();
+              setTimezone(detected);
+              toast.success(`Timezone set to ${detected}.`);
+            }}>
               Detect
             </button>
           </div>
 
-          <div className="preset-chips">
+          <div className="row-wrap" style={{ gap: 6 }}>
             {PRESETS.map((preset) => (
-              <button key={preset.label} type="button" className="preset-chip" onClick={() => setDays(preset.build())}>
+              <button key={preset.label} type="button" className="chip" onClick={() => setWeek(preset.build())}>
                 {preset.label}
               </button>
             ))}
           </div>
 
-          <div className="availability-days">
-            {days.map((day, dayIndex) => (
-              <div key={day.day_of_week} className={`availability-day${day.is_active ? "" : " inactive"}`}>
-                <div className="availability-day-head">
-                  <label className="availability-day-toggle">
-                    <input
-                      type="checkbox"
-                      checked={day.is_active}
-                      onChange={(event) => toggleDay(dayIndex, event.target.checked)}
-                    />
-                    <span className="day-name">{DAY_ABBR[day.day_of_week]}</span>
-                    <span className="day-name-full">{DAY_NAMES[day.day_of_week]}</span>
-                  </label>
-
-                  <div className="availability-day-tools">
-                    {day.is_active ? (
-                      <>
-                        <button type="button" className="link-button" onClick={() => addWindow(dayIndex)}>
-                          + Add window
-                        </button>
-                        {day.day_of_week < 5 ? (
-                          <button type="button" className="link-button" onClick={() => copyToWeekdays(dayIndex)}>
-                            Copy to weekdays
-                          </button>
-                        ) : null}
-                      </>
-                    ) : (
-                      <span className="day-hours-label">Unavailable</span>
-                    )}
-                  </div>
-                </div>
+          <div className="day-list">
+            {week.map((day, dayIndex) => (
+              <div key={day.day_of_week} className={`day-row${day.is_active ? "" : " is-off"}`}>
+                <label className="day-toggle">
+                  <input type="checkbox" checked={day.is_active}
+                         onChange={(event) => toggleDay(dayIndex, event.target.checked)} />
+                  <span className="day-name">{DAYS[day.day_of_week]}</span>
+                </label>
 
                 {day.is_active ? (
-                  <div className="availability-windows">
+                  <div className="day-windows">
                     {day.windows.map((slot, windowIndex) => (
-                      <div className="availability-window" key={windowIndex}>
-                        <input
-                          type="time"
-                          value={slot.start_time}
-                          onChange={(event) => updateWindow(dayIndex, windowIndex, { start_time: event.target.value })}
-                        />
-                        <span className="time-divider">to</span>
-                        <input
-                          type="time"
-                          value={slot.end_time}
-                          onChange={(event) => updateWindow(dayIndex, windowIndex, { end_time: event.target.value })}
-                        />
-                        <button
-                          type="button"
-                          className="icon-button danger"
-                          onClick={() => removeWindow(dayIndex, windowIndex)}
-                          aria-label={`Remove ${formatRange(slot.start_time, slot.end_time)}`}
-                          title="Remove this window"
-                        >
-                          ×
+                      <div className="day-window" key={windowIndex}>
+                        <input className="input" type="time" value={slot.start_time}
+                               onChange={(event) => updateWindow(dayIndex, windowIndex, { start_time: event.target.value })} />
+                        <span className="tiny subtle">to</span>
+                        <input className="input" type="time" value={slot.end_time}
+                               onChange={(event) => updateWindow(dayIndex, windowIndex, { end_time: event.target.value })} />
+                        <button type="button" className="btn btn-icon btn-ghost btn-icon-sm"
+                                aria-label="Remove this window"
+                                onClick={() => removeWindow(dayIndex, windowIndex)}>
+                          <Icon name="close" size={13} />
                         </button>
                       </div>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <span className="small subtle" style={{ paddingTop: 7 }}>Unavailable</span>
+                )}
+
+                <div className="day-tools">
+                  {day.is_active && (
+                    <>
+                      <button type="button" className="btn-link" onClick={() => addWindow(dayIndex)}>Add window</button>
+                      {day.day_of_week < 5 && (
+                        <button type="button" className="btn-link" onClick={() => copyToWeekdays(dayIndex)}>Copy to weekdays</button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
 
-          <div className="button-row">
-            <button type="submit" className="primary-button" disabled={saving || loading}>
-              {saving ? "Saving..." : "Save availability"}
+          <div>
+            <button type="submit" className="btn btn-primary" disabled={saving || loading}>
+              {saving ? <><span className="spinner" /> Saving…</> : "Save availability"}
             </button>
           </div>
         </form>
       </SectionCard>
 
-      <SectionCard title="Blocked dates" subtitle="Block a single day or a whole range — holidays, leave, travel.">
-        <form onSubmit={handleAddBlockout} className="form-grid">
-          <label>
-            From
-            <input
-              type="date"
-              min={today}
-              value={newBlockout.start_date}
-              onChange={(event) => setNewBlockout({ ...newBlockout, start_date: event.target.value })}
-              required
-            />
-          </label>
-          <label>
-            To <span className="field-hint-inline">optional</span>
-            <input
-              type="date"
-              min={newBlockout.start_date || today}
-              value={newBlockout.end_date}
-              onChange={(event) => setNewBlockout({ ...newBlockout, end_date: event.target.value })}
-            />
-          </label>
-          <label className="full-width">
-            Reason
-            <input
-              value={newBlockout.reason}
-              onChange={(event) => setNewBlockout({ ...newBlockout, reason: event.target.value })}
-              placeholder="Holiday, leave, travel"
-            />
-          </label>
-          <div className="button-row full-width">
-            <button type="submit" className="primary-button" disabled={!newBlockout.start_date}>
-              Block these dates
-            </button>
+      <SectionCard title="Blocked dates" subtitle="Holidays, leave, travel — block a day or a whole range.">
+        <form className="stack-4" onSubmit={addBlockout}>
+          <div className="grid-2">
+            <div className="field">
+              <label className="field-label" htmlFor="from">From</label>
+              <input id="from" className="input" type="date" min={today} required value={draft.start_date}
+                     onChange={(event) => setDraft({ ...draft, start_date: event.target.value })} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="to">To <span className="opt">optional</span></label>
+              <input id="to" className="input" type="date" min={draft.start_date || today} value={draft.end_date}
+                     onChange={(event) => setDraft({ ...draft, end_date: event.target.value })} />
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field-label" htmlFor="reason">Reason <span className="opt">optional</span></label>
+            <input id="reason" className="input" value={draft.reason} placeholder="Holiday, travel, conference"
+                   onChange={(event) => setDraft({ ...draft, reason: event.target.value })} />
+          </div>
+
+          <div>
+            <button type="submit" className="btn btn-primary" disabled={!draft.start_date}>Block these dates</button>
           </div>
         </form>
 
-        <div className="blockout-list" style={{ marginTop: "var(--space-5)" }}>
+        <div className="stack-2" style={{ marginTop: "var(--s5)" }}>
           {blockouts.length === 0 ? (
-            <div className="blockout-empty"><p>No blocked dates yet.</p></div>
+            <p className="empty small">Nothing blocked out yet.</p>
           ) : (
             blockouts.map((blockout) => {
               const start = new Date(`${blockout.start_date}T00:00:00`);
               const end = new Date(`${blockout.end_date}T00:00:00`);
-              const options = { weekday: "short", month: "short", day: "numeric", year: "numeric" };
-              const label =
-                blockout.start_date === blockout.end_date
-                  ? start.toLocaleDateString("en-US", options)
-                  : `${start.toLocaleDateString("en-US", options)} → ${end.toLocaleDateString("en-US", options)}`;
+              const label = blockout.start_date === blockout.end_date
+                ? start.toLocaleDateString("en-US", dateOptions)
+                : `${start.toLocaleDateString("en-US", dateOptions)} → ${end.toLocaleDateString("en-US", dateOptions)}`;
+
               return (
-                <div key={blockout.id} className="blockout-row">
-                  <div className="blockout-info">
-                    <span className="blockout-date">{label}</span>
-                    {blockout.reason ? <span className="blockout-reason">{blockout.reason}</span> : null}
+                <div key={blockout.id} className="list-bordered">
+                  <div className="list-row">
+                    <div>
+                      <p className="small" style={{ fontWeight: 600 }}>{label}</p>
+                      {blockout.reason ? <p className="tiny subtle">{blockout.reason}</p> : null}
+                    </div>
+                    <button className="btn btn-sm btn-ghost btn-danger" onClick={() => removeBlockout(blockout.id)}>Remove</button>
                   </div>
-                  <button type="button" className="ghost-button danger" onClick={() => removeBlockout(blockout.id)}>
-                    Remove
-                  </button>
                 </div>
               );
             })

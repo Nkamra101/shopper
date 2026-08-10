@@ -1,764 +1,538 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionCard from "../components/SectionCard";
 import EmptyState from "../components/EmptyState";
-import { Skeleton, SkeletonList } from "../components/Skeleton";
+import Icon from "../components/Icon";
+import { SkeletonList } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { api } from "../services/api";
-import { formatDate, formatDateTime, getUpcomingDates, toDateInputValue } from "../utils/date";
+import { browserTimezone, formatFullIn, formatTimeIn, toDateInputValue } from "../utils/date";
 
-const SCOPES = ["upcoming", "past", "cancelled", "all"];
+const SCOPES = [
+  { value: "upcoming", label: "Upcoming" },
+  { value: "past", label: "Past" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "all", label: "All" },
+];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function validatePortalForm(form) {
-  const errors = {};
-  if (!form.eventTypeId) errors.eventTypeId = "Select an event type.";
-  if (!form.selectedDate) errors.selectedDate = "Choose a date.";
-  if (!form.startTime) errors.startTime = "Pick a time slot.";
-  if (!form.bookerName.trim()) errors.bookerName = "Guest name is required.";
-  if (!EMAIL_PATTERN.test(form.bookerEmail.trim())) errors.bookerEmail = "Enter a valid email address.";
-  return errors;
+function statusBadge(booking) {
+  if (booking.status === "cancelled") return { label: "Cancelled", tone: "badge-danger" };
+  if (new Date(booking.start_time) < new Date()) return { label: "Completed", tone: "" };
+  return { label: "Confirmed", tone: "badge-ok" };
 }
 
-function PortalField({ label, error, children, fullWidth = false }) {
-  return (
-    <label className={fullWidth ? "full-width" : ""}>
-      {label}
-      {children}
-      {error && <p className="field-error">{error}</p>}
-    </label>
-  );
+/** Groups bookings by their local calendar day for the timeline. */
+function groupByDay(bookings, timezone) {
+  const groups = new Map();
+  bookings.forEach((booking) => {
+    const key = new Date(booking.start_time).toLocaleDateString("en-US", {
+      timeZone: timezone, weekday: "long", month: "long", day: "numeric", year: "numeric",
+    });
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(booking);
+  });
+  return [...groups.entries()];
 }
 
 export default function BookingsPage() {
   const toast = useToast();
+  const timezone = browserTimezone();
+
   const [scope, setScope] = useState("upcoming");
+  const [search, setSearch] = useState("");
   const [bookings, setBookings] = useState([]);
   const [eventTypes, setEventTypes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [portalLoading, setPortalLoading] = useState(true);
-  const [rescheduleTarget, setRescheduleTarget] = useState(null);
-  const [search, setSearch] = useState("");
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [bulkCancelling, setBulkCancelling] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [creatingBooking, setCreatingBooking] = useState(false);
-  const [editingNotes, setEditingNotes] = useState({ id: null, text: "" });
-  const [savingNotes, setSavingNotes] = useState(false);
-  const [slotsLoading, setSlotsLoading] = useState(false);
-  const [slotOptions, setSlotOptions] = useState([]);
-  const [portalTouched, setPortalTouched] = useState({});
-  const [portalForm, setPortalForm] = useState({
-    eventTypeId: "",
-    selectedDate: toDateInputValue(getUpcomingDates(1)[0]),
-    startTime: "",
-    bookerName: "",
-    bookerEmail: "",
-    notes: "",
-    sendEmail: true,
-  });
+  const [notesDraft, setNotesDraft] = useState({ id: null, text: "" });
+  const [rescheduleFor, setRescheduleFor] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
 
-  const upcomingDates = useMemo(() => getUpcomingDates(21), []);
-  const portalErrors = useMemo(() => validatePortalForm(portalForm), [portalForm]);
-  const filteredEventTypes = useMemo(
-    () => eventTypes.filter((item) => item.is_active !== false),
-    [eventTypes]
-  );
-  const selectedEventType = useMemo(
-    () => filteredEventTypes.find((item) => item.id === portalForm.eventTypeId) || null,
-    [filteredEventTypes, portalForm.eventTypeId]
-  );
-
-  async function loadBookings(activeScope = scope) {
+  async function load(activeScope = scope) {
     setLoading(true);
-    setSelectedIds(new Set());
+    setSelected(new Set());
     try {
-      const data = await api.getBookings(activeScope);
-      setBookings(data);
+      setBookings(await api.getBookings({ scope: activeScope }));
     } catch (error) {
-      toast.error(error.message || "Failed to load bookings.");
+      toast.error(error.message || "Could not load bookings.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadPortalData() {
-    setPortalLoading(true);
-    try {
-      const data = await api.getEventTypes();
-      setEventTypes(data);
-      const activeTypes = data.filter((item) => item.is_active !== false);
-      setPortalForm((current) => ({
-        ...current,
-        eventTypeId: current.eventTypeId || activeTypes[0]?.id || "",
-      }));
-    } catch (error) {
-      toast.error(error.message || "Failed to load booking portal.");
-    } finally {
-      setPortalLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadBookings(scope);
-  }, [scope]);
-
-  useEffect(() => {
-    loadPortalData();
-  }, []);
-
-  useEffect(() => {
-    async function loadSlots() {
-      if (!selectedEventType?.url_slug || !portalForm.selectedDate) {
-        setSlotOptions([]);
-        return;
-      }
-
-      setSlotsLoading(true);
-      try {
-        const data = await api.getSlots(selectedEventType.url_slug, portalForm.selectedDate);
-        setSlotOptions(data);
-        setPortalForm((current) => {
-          if (!current.startTime) return current;
-          const stillAvailable = data.some((slot) => slot.start_time === current.startTime);
-          return stillAvailable ? current : { ...current, startTime: "" };
-        });
-      } catch (error) {
-        setSlotOptions([]);
-        toast.error(error.message || "Could not load slots.");
-      } finally {
-        setSlotsLoading(false);
-      }
-    }
-
-    loadSlots();
-  }, [selectedEventType?.url_slug, portalForm.selectedDate]);
-
-  async function handleCancel(id) {
-    if (!window.confirm("Cancel this booking?")) return;
-    try {
-      await api.cancelBooking(id);
-      toast.success("Booking cancelled.");
-      loadBookings(scope);
-    } catch (error) {
-      toast.error(error.message || "Could not cancel booking.");
-    }
-  }
-
-  async function handleBulkCancel() {
-    if (!selectedIds.size) return;
-    if (!window.confirm(`Cancel ${selectedIds.size} booking(s)?`)) return;
-    setBulkCancelling(true);
-    const results = await Promise.allSettled([...selectedIds].map((id) => api.cancelBooking(id)));
-    const failed = results.filter((r) => r.status === "rejected").length;
-    const succeeded = results.length - failed;
-    if (succeeded > 0) loadBookings(scope);
-    if (failed > 0) toast.error(`${failed} cancellation(s) failed${succeeded > 0 ? `; ${succeeded} succeeded` : ""}.`);
-    else toast.success(`${succeeded} booking(s) cancelled.`);
-    setBulkCancelling(false);
-  }
-
-  async function handleCreateBooking(event) {
-    event.preventDefault();
-    setPortalTouched({
-      eventTypeId: true,
-      selectedDate: true,
-      startTime: true,
-      bookerName: true,
-      bookerEmail: true,
-    });
-    if (Object.keys(portalErrors).length > 0) return;
-
-    setCreatingBooking(true);
-    try {
-      await api.createAdminBooking({
-        event_type_id: portalForm.eventTypeId,
-        start_time: portalForm.startTime,
-        booker_name: portalForm.bookerName.trim(),
-        booker_email: portalForm.bookerEmail.trim(),
-        notes: portalForm.notes.trim(),
-        send_email: portalForm.sendEmail,
-      });
-      toast.success("Booking added successfully.");
-      setPortalForm((current) => ({
-        ...current,
-        startTime: "",
-        bookerName: "",
-        bookerEmail: "",
-        notes: "",
-      }));
-      setPortalTouched({});
-      loadBookings(scope);
-      if (selectedEventType?.url_slug) {
-        const refreshedSlots = await api.getSlots(selectedEventType.url_slug, portalForm.selectedDate);
-        setSlotOptions(refreshedSlots);
-      }
-    } catch (error) {
-      toast.error(error.message || "Could not create booking.");
-    } finally {
-      setCreatingBooking(false);
-    }
-  }
-
-  function toggleSelect(id) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
+  useEffect(() => { load(scope); }, [scope]);
+  useEffect(() => { api.getEventTypes().then(setEventTypes).catch(() => setEventTypes([])); }, []);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return bookings;
-    const query = search.toLowerCase();
-    return bookings.filter(
-      (booking) =>
-        booking.booker_name?.toLowerCase().includes(query) ||
-        booking.booker_email?.toLowerCase().includes(query) ||
-        booking.event_type?.title?.toLowerCase().includes(query)
+    const query = search.trim().toLowerCase();
+    if (!query) return bookings;
+    return bookings.filter((booking) =>
+      [booking.booker_name, booking.booker_email, booking.notes, booking.event_type?.title]
+        .some((value) => (value || "").toLowerCase().includes(query))
     );
   }, [bookings, search]);
 
-  function toggleSelectAll() {
-    if (selectedIds.size === filtered.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filtered.map((booking) => booking.id)));
+  const groups = useMemo(() => groupByDay(filtered, timezone), [filtered, timezone]);
+
+  async function cancel(id) {
+    if (!window.confirm("Cancel this booking? The guest will be emailed.")) return;
+    try {
+      await api.cancelBooking(id);
+      toast.success("Booking cancelled.");
+      load(scope);
+    } catch (error) {
+      toast.error(error.message || "Could not cancel it.");
     }
   }
 
-  /**
-   * Exported server-side so values are properly quoted (a comma in a guest
-   * name used to corrupt the file), and so the rows include booking answers
-   * and times in the host's own timezone.
-   */
+  async function bulkCancel() {
+    if (!selected.size) return;
+    if (!window.confirm(`Cancel ${selected.size} booking(s)? Guests will be emailed.`)) return;
+    setBusy(true);
+    const results = await Promise.allSettled([...selected].map((id) => api.cancelBooking(id)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    if (failed) toast.error(`${failed} of ${results.length} could not be cancelled.`);
+    else toast.success(`${results.length} booking(s) cancelled.`);
+    setBusy(false);
+    load(scope);
+  }
+
+  async function saveNotes(id) {
+    try {
+      const updated = await api.updateBookingNotes(id, notesDraft.text);
+      setBookings((current) => current.map((booking) => (booking.id === id ? { ...booking, notes: updated.notes } : booking)));
+      setNotesDraft({ id: null, text: "" });
+      toast.success("Notes saved.");
+    } catch (error) {
+      toast.error(error.message || "Could not save the notes.");
+    }
+  }
+
   async function exportCsv() {
     setExporting(true);
     try {
       await api.exportBookingsCsv({ scope, search: search.trim() });
-      toast.success("CSV exported.");
+      toast.success("CSV downloaded.");
     } catch (error) {
-      toast.error(error.message || "Could not export CSV.");
+      toast.error(error.message || "Could not export.");
     } finally {
       setExporting(false);
     }
   }
 
-  async function handleSaveNotes(bookingId) {
-    setSavingNotes(true);
-    try {
-      const updated = await api.updateBookingNotes(bookingId, editingNotes.text);
-      setBookings((prev) => prev.map((b) => b.id === bookingId ? { ...b, notes: updated.notes } : b));
-      setEditingNotes({ id: null, text: "" });
-      toast.success("Notes saved.");
-    } catch (err) {
-      toast.error(err.message || "Could not save notes.");
-    } finally {
-      setSavingNotes(false);
-    }
+  function toggleSelected(id) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
-  const selectedSlotLabel =
-    slotOptions.find((slot) => slot.start_time === portalForm.startTime)?.display_time || "";
-
-  const emptyCopy = {
-    upcoming: { title: "No upcoming bookings", description: "Manual bookings and public bookings will show here." },
-    past: { title: "No past bookings", description: "Completed meetings will appear here for reference." },
-    all: { title: "No bookings yet", description: "Create a booking or share a public link to get started." },
-  };
-
   return (
-    <div className="bookings-layout">
+    <div className="stack">
       <SectionCard
-        title="Booking portal"
-        subtitle="Add bookings for people yourself, even before they visit the public page."
+        title="Add a booking"
+        subtitle="Book someone in yourself — useful for calls agreed over email."
+        actions={
+          <button className="btn btn-sm" onClick={() => setShowAdd((value) => !value)}>
+            <Icon name={showAdd ? "chevronDown" : "plus"} size={13} />
+            {showAdd ? "Hide" : "New booking"}
+          </button>
+        }
       >
-        {portalLoading ? (
-          <div className="manual-booking-skeleton">
-            <Skeleton height={42} />
-            <Skeleton height={42} />
-            <Skeleton height={120} />
-          </div>
-        ) : filteredEventTypes.length === 0 ? (
-          <EmptyState
-            title="Create an event type first"
-            description="Your booking portal needs at least one active event type before you can add a person booking."
+        {showAdd ? (
+          <ManualBooking
+            eventTypes={eventTypes.filter((item) => item.is_active !== false)}
+            onCreated={() => { setShowAdd(false); load(scope); }}
           />
         ) : (
-          <form className="manual-booking-form" onSubmit={handleCreateBooking} noValidate>
-            <div className="manual-booking-grid">
-              <PortalField label="Event type" error={portalTouched.eventTypeId && portalErrors.eventTypeId}>
-                <select
-                  value={portalForm.eventTypeId}
-                  onChange={(event) =>
-                    setPortalForm((current) => ({
-                      ...current,
-                      eventTypeId: event.target.value,
-                      startTime: "",
-                    }))
-                  }
-                  onBlur={() => setPortalTouched((current) => ({ ...current, eventTypeId: true }))}
-                >
-                  {filteredEventTypes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.title} - {item.duration} min
-                    </option>
-                  ))}
-                </select>
-              </PortalField>
-
-              <PortalField label="Guest name" error={portalTouched.bookerName && portalErrors.bookerName}>
-                <input
-                  value={portalForm.bookerName}
-                  onChange={(event) => setPortalForm((current) => ({ ...current, bookerName: event.target.value }))}
-                  onBlur={() => setPortalTouched((current) => ({ ...current, bookerName: true }))}
-                  placeholder="Priya Sharma"
-                />
-              </PortalField>
-
-              <PortalField label="Date" error={portalTouched.selectedDate && portalErrors.selectedDate}>
-                <select
-                  value={portalForm.selectedDate}
-                  onChange={(event) =>
-                    setPortalForm((current) => ({
-                      ...current,
-                      selectedDate: event.target.value,
-                      startTime: "",
-                    }))
-                  }
-                  onBlur={() => setPortalTouched((current) => ({ ...current, selectedDate: true }))}
-                >
-                  {upcomingDates.map((date) => {
-                    const value = toDateInputValue(date);
-                    return (
-                      <option key={value} value={value}>
-                        {formatDate(date)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </PortalField>
-
-              <PortalField label="Guest email" error={portalTouched.bookerEmail && portalErrors.bookerEmail}>
-                <input
-                  type="email"
-                  value={portalForm.bookerEmail}
-                  onChange={(event) => setPortalForm((current) => ({ ...current, bookerEmail: event.target.value }))}
-                  onBlur={() => setPortalTouched((current) => ({ ...current, bookerEmail: true }))}
-                  placeholder="priya@example.com"
-                />
-              </PortalField>
-
-              <div className="full-width">
-                <div className="manual-booking-slot-header">
-                  <div>
-                    <p className="eyebrow">Available slots</p>
-                    <h4>
-                      {selectedEventType?.title || "Choose a time"}
-                    </h4>
-                  </div>
-                  {selectedSlotLabel && (
-                    <div className="manual-booking-selection">
-                      {formatDate(new Date(`${portalForm.selectedDate}T00:00:00`))} at {selectedSlotLabel}
-                    </div>
-                  )}
-                </div>
-
-                {slotsLoading ? (
-                  <div className="slot-grid">
-                    {Array.from({ length: 8 }).map((_, index) => (
-                      <Skeleton key={index} height={44} />
-                    ))}
-                  </div>
-                ) : slotOptions.length === 0 ? (
-                  <div className="slots-empty">
-                    <span>No open slots for this date.</span>
-                  </div>
-                ) : (
-                  <div className="slot-grid" role="radiogroup" aria-label="Available slots">
-                    {slotOptions.map((slot) => {
-                      const active = slot.start_time === portalForm.startTime;
-                      return (
-                        <button
-                          key={slot.start_time}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          className={active ? "slot-button active" : "slot-button"}
-                          onClick={() =>
-                            setPortalForm((current) => ({
-                              ...current,
-                              startTime: slot.start_time,
-                            }))
-                          }
-                        >
-                          {slot.display_time}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {portalTouched.startTime && portalErrors.startTime && (
-                  <p className="field-error" style={{ marginTop: "var(--space-2)" }}>
-                    {portalErrors.startTime}
-                  </p>
-                )}
-              </div>
-
-              <PortalField label="Notes" fullWidth>
-                <textarea
-                  rows="3"
-                  value={portalForm.notes}
-                  onChange={(event) => setPortalForm((current) => ({ ...current, notes: event.target.value }))}
-                  placeholder="Optional context for the meeting"
-                />
-              </PortalField>
-            </div>
-
-            <div className="manual-booking-footer">
-              <label className="portal-checkbox">
-                <input
-                  type="checkbox"
-                  checked={portalForm.sendEmail}
-                  onChange={(event) =>
-                    setPortalForm((current) => ({
-                      ...current,
-                      sendEmail: event.target.checked,
-                    }))
-                  }
-                />
-                Send confirmation email and meeting link to the guest
-              </label>
-
-              <button type="submit" className="primary-button" disabled={creatingBooking}>
-                {creatingBooking ? (
-                  <>
-                    <span className="btn-spinner" />
-                    Creating booking...
-                  </>
-                ) : (
-                  "Add booking"
-                )}
-              </button>
-            </div>
-          </form>
+          <p className="small muted">
+            Bookings added here skip email verification and are confirmed immediately.
+          </p>
         )}
       </SectionCard>
 
-      <SectionCard
-        title="Bookings"
-        subtitle="Track all upcoming and past meetings in one place."
-      >
-        <div className="bookings-toolbar">
-          <div className="filter-tabs" role="tablist">
+      <SectionCard title="Bookings" subtitle="Everything scheduled with you.">
+        <div className="toolbar" style={{ marginBottom: "var(--s5)" }}>
+          <div className="seg" role="tablist">
             {SCOPES.map((item) => (
               <button
-                key={item}
-                type="button"
-                role="tab"
-                aria-selected={scope === item}
-                className={scope === item ? "tab-button active" : "tab-button"}
-                onClick={() => setScope(item)}
+                key={item.value} type="button" role="tab"
+                className="seg-item"
+                aria-selected={scope === item.value}
+                onClick={() => setScope(item.value)}
               >
-                {item.charAt(0).toUpperCase() + item.slice(1)}
+                {item.label}
               </button>
             ))}
           </div>
 
-          <div className="bookings-toolbar-right">
-            <div className="search-input-wrap">
-              <svg className="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+          <div className="toolbar-right">
+            <div className="search">
+              <Icon name="search" size={14} />
               <input
-                className="search-input"
-                placeholder="Search guest, email, or event"
+                className="input" style={{ minWidth: 210 }}
+                placeholder="Search name, email or notes"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
               {search && (
                 <button className="search-clear" onClick={() => setSearch("")} aria-label="Clear search">
-                  x
+                  <Icon name="close" size={11} />
                 </button>
               )}
             </div>
-            <button className="secondary-button" onClick={exportCsv} disabled={exporting || filtered.length === 0}>
-              {exporting ? "Exporting..." : "Export CSV"}
+            <button className="btn" onClick={exportCsv} disabled={exporting || filtered.length === 0}>
+              {exporting ? <span className="spinner" /> : <Icon name="download" size={14} />}
+              Export CSV
             </button>
           </div>
         </div>
 
-        {selectedIds.size > 0 && (
-          <div className="bulk-action-bar">
-            <span>{selectedIds.size} selected</span>
-            <button className="ghost-button cancel-button" onClick={handleBulkCancel} disabled={bulkCancelling}>
-              {bulkCancelling ? "Cancelling..." : `Cancel ${selectedIds.size} booking(s)`}
+        {selected.size > 0 && (
+          <div className="bulk-bar" style={{ marginBottom: "var(--s4)" }}>
+            <strong>{selected.size} selected</strong>
+            <div className="spacer" />
+            <button className="btn btn-sm btn-danger" onClick={bulkCancel} disabled={busy}>
+              {busy ? <span className="spinner" /> : null} Cancel selected
             </button>
-            <button className="secondary-button" onClick={() => setSelectedIds(new Set())}>
-              Clear selection
-            </button>
+            <button className="btn btn-sm btn-ghost" onClick={() => setSelected(new Set())}>Clear</button>
           </div>
         )}
 
         {loading ? (
-          <SkeletonList count={4} />
+          <SkeletonList count={3} />
         ) : filtered.length === 0 ? (
-          search ? (
-            <EmptyState title="No results" description={`No bookings match "${search}".`} />
-          ) : (
-            <EmptyState title={emptyCopy[scope].title} description={emptyCopy[scope].description} />
-          )
+          <EmptyState
+            icon="users"
+            title={search ? "No matches" : "Nothing here yet"}
+            description={search ? `Nothing matches “${search}”.` : "Bookings will appear here as guests schedule time with you."}
+          />
         ) : (
-          <>
-            <div className="select-all-row">
-              <label className="select-all-label">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.size === filtered.length && filtered.length > 0}
-                  onChange={toggleSelectAll}
-                />
-                Select all ({filtered.length})
-              </label>
-            </div>
+          <div className="timeline">
+            {groups.map(([day, items]) => (
+              <div key={day}>
+                <p className="timeline-group-label">{day}</p>
+                <div className="stack-2" style={{ marginTop: "var(--s2)" }}>
+                  {items.map((booking) => {
+                    const status = statusBadge(booking);
+                    const editing = notesDraft.id === booking.id;
+                    const canAct = booking.status !== "cancelled" && new Date(booking.start_time) > new Date();
 
-            <div className="timeline">
-              {filtered.map((booking) => (
-                <div
-                  key={booking.id}
-                  className="timeline-item"
-                  style={{ "--booking-accent": booking.event_type?.accent_color || "var(--accent)" }}
-                >
-                  <div className="timeline-dot" />
-                  <article className={`booking-card timeline-card ${selectedIds.has(booking.id) ? "selected" : ""}`}>
-                    <div className="booking-select">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(booking.id)}
-                        onChange={() => toggleSelect(booking.id)}
-                        aria-label={`Select booking for ${booking.booker_name}`}
-                      />
-                    </div>
-                    <div className="booking-main">
-                      <p className="eyebrow" style={{ color: "var(--booking-accent)" }}>
-                        {booking.event_type?.title}
-                      </p>
-                      <h4>{booking.booker_name}</h4>
-                      <p className="booking-email">{booking.booker_email}</p>
-                      <p className="booking-time">{formatDateTime(booking.start_time)}</p>
-                      {editingNotes.id === booking.id ? (
-                        <div className="booking-notes-edit">
-                          <textarea
-                            className="booking-notes-textarea"
-                            rows="2"
-                            value={editingNotes.text}
-                            onChange={(e) => setEditingNotes((prev) => ({ ...prev, text: e.target.value }))}
-                            placeholder="Add internal notes…"
-                            autoFocus
-                          />
-                          <div className="booking-notes-actions">
-                            <button
-                              type="button"
-                              className="primary-button"
-                              style={{ minHeight: 32, padding: "4px 14px", fontSize: 13 }}
-                              onClick={() => handleSaveNotes(booking.id)}
-                              disabled={savingNotes}
-                            >
-                              {savingNotes ? "Saving…" : "Save"}
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              style={{ minHeight: 32, padding: "4px 14px", fontSize: 13 }}
-                              onClick={() => setEditingNotes({ id: null, text: "" })}
-                            >
-                              Cancel
-                            </button>
+                    return (
+                      <article key={booking.id} className="item" style={{ flexDirection: "column" }}>
+                        <div className="row-top" style={{ width: "100%", gap: "var(--s3)" }}>
+                          {canAct && (
+                            <input
+                              type="checkbox" style={{ marginTop: 4 }}
+                              checked={selected.has(booking.id)}
+                              onChange={() => toggleSelected(booking.id)}
+                              aria-label={`Select booking with ${booking.booker_name}`}
+                            />
+                          )}
+
+                          <div className="item-main">
+                            <div className="row-2" style={{ flexWrap: "wrap" }}>
+                              <span className="small num" style={{ fontWeight: 650 }}>
+                                {formatTimeIn(booking.start_time, timezone)}
+                              </span>
+                              <span className="badge">{booking.event_type?.title}</span>
+                              <span className={`badge ${status.tone}`}>{status.label}</span>
+                            </div>
+
+                            <p className="small" style={{ marginTop: 6, fontWeight: 600 }}>{booking.booker_name}</p>
+                            <p className="tiny subtle">{booking.booker_email}</p>
+
+                            {(booking.answers || []).length > 0 && (
+                              <dl className="dl" style={{ marginTop: "var(--s3)" }}>
+                                {booking.answers.map((answer) => (
+                                  <div key={answer.question_id}>
+                                    <dt>{answer.label || answer.question_id}</dt>
+                                    <dd>{answer.value}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            )}
+
+                            <div style={{ marginTop: "var(--s3)" }}>
+                              {editing ? (
+                                <div className="stack-2">
+                                  <textarea
+                                    className="textarea" rows="2" value={notesDraft.text}
+                                    onChange={(event) => setNotesDraft({ ...notesDraft, text: event.target.value })}
+                                  />
+                                  <div className="row-2">
+                                    <button className="btn btn-sm btn-primary" onClick={() => saveNotes(booking.id)}>Save</button>
+                                    <button className="btn btn-sm btn-ghost" onClick={() => setNotesDraft({ id: null, text: "" })}>Cancel</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button
+                                  className="btn-link tiny"
+                                  onClick={() => setNotesDraft({ id: booking.id, text: booking.notes || "" })}
+                                >
+                                  {booking.notes ? booking.notes : "Add a private note"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="item-actions">
+                            {booking.meeting_url && canAct && (
+                              <a className="btn btn-sm" href={booking.meeting_url} target="_blank" rel="noreferrer">
+                                <Icon name="video" size={12} /> Join
+                              </a>
+                            )}
+                            {canAct && (
+                              <>
+                                <button className="btn btn-sm" onClick={() => setRescheduleFor(booking)}>
+                                  <Icon name="refresh" size={12} /> Move
+                                </button>
+                                <button className="btn btn-sm btn-danger" onClick={() => cancel(booking.id)}>Cancel</button>
+                              </>
+                            )}
                           </div>
                         </div>
-                      ) : (
-                        <div
-                          className="booking-notes-row"
-                          onClick={() => setEditingNotes({ id: booking.id, text: booking.notes || "" })}
-                          title="Click to edit notes"
-                        >
-                          {booking.notes
-                            ? <p className="booking-notes">"{booking.notes}"</p>
-                            : <p className="booking-notes-empty">Add notes…</p>}
-                        </div>
-                      )}
-                    </div>
-                    <div className="booking-side">
-                      <span className={`status-pill ${booking.status}`}>{booking.status}</span>
-                      {booking.meeting_url && (
-                        <a href={booking.meeting_url} target="_blank" rel="noreferrer" className="meeting-link-button">
-                          Join
-                        </a>
-                      )}
-                      {booking.status === "confirmed" && scope !== "past" && (
-                        <div className="booking-actions">
-                          <button type="button" className="ghost-button reschedule-button" onClick={() => setRescheduleTarget(booking)}>
-                            Reschedule
-                          </button>
-                          <button type="button" className="ghost-button cancel-button" onClick={() => handleCancel(booking.id)}>
-                            Cancel
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </article>
+                      </article>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </>
+              </div>
+            ))}
+          </div>
         )}
       </SectionCard>
 
-      {rescheduleTarget && (
+      {rescheduleFor && (
         <RescheduleModal
-          booking={rescheduleTarget}
-          onClose={() => setRescheduleTarget(null)}
-          onSuccess={() => {
-            setRescheduleTarget(null);
-            loadBookings(scope);
-          }}
+          booking={rescheduleFor}
+          timezone={timezone}
+          onClose={() => setRescheduleFor(null)}
+          onDone={() => { setRescheduleFor(null); load(scope); }}
         />
       )}
     </div>
   );
 }
 
-function RescheduleModal({ booking, onClose, onSuccess }) {
+function ManualBooking({ eventTypes, onCreated }) {
   const toast = useToast();
-  const dateChoices = useMemo(() => getUpcomingDates(14), []);
-  const [selectedDate, setSelectedDate] = useState(toDateInputValue(dateChoices[0]));
+  const [form, setForm] = useState({
+    eventTypeId: "", date: toDateInputValue(new Date()), startTime: "",
+    name: "", email: "", notes: "", sendEmail: true,
+  });
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const slug = booking.event_type?.url_slug;
+  const [saving, setSaving] = useState(false);
+
+  const eventType = eventTypes.find((item) => item.id === form.eventTypeId) || null;
 
   useEffect(() => {
-    async function loadSlots() {
-      if (!slug || !selectedDate) return;
+    if (!form.eventTypeId && eventTypes.length) {
+      setForm((current) => ({ ...current, eventTypeId: eventTypes[0].id }));
+    }
+  }, [eventTypes, form.eventTypeId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!eventType?.url_slug || !form.date) { setSlots([]); return; }
       setLoadingSlots(true);
-      setSelectedSlot("");
       try {
-        const data = await api.getSlots(slug, selectedDate);
-        setSlots(data);
-      } catch (error) {
-        toast.error(error.message || "Could not load slots.");
+        const data = await api.getSlots(eventType.url_slug, form.date);
+        if (!cancelled) setSlots(data);
+      } catch {
+        if (!cancelled) setSlots([]);
       } finally {
-        setLoadingSlots(false);
+        if (!cancelled) setLoadingSlots(false);
       }
-    }
+    })();
+    return () => { cancelled = true; };
+  }, [eventType?.url_slug, form.date]);
 
-    loadSlots();
-  }, [slug, selectedDate, toast]);
+  async function submit(event) {
+    event.preventDefault();
+    if (!form.eventTypeId || !form.startTime) { toast.error("Pick an event type and a time."); return; }
+    if (!form.name.trim()) { toast.error("Add the guest's name."); return; }
+    if (!EMAIL_PATTERN.test(form.email.trim())) { toast.error("Add a valid guest email."); return; }
+
+    setSaving(true);
+    try {
+      await api.createAdminBooking({
+        event_type_id: form.eventTypeId,
+        start_time: form.startTime,
+        booker_name: form.name.trim(),
+        booker_email: form.email.trim(),
+        notes: form.notes.trim(),
+        send_email: form.sendEmail,
+      });
+      toast.success("Booking added.");
+      onCreated();
+    } catch (error) {
+      toast.error(error.message || "Could not add the booking.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (eventTypes.length === 0) {
+    return <p className="empty small">Create an active event type first.</p>;
+  }
+
+  return (
+    <form className="stack-4" onSubmit={submit}>
+      <div className="grid-2">
+        <div className="field">
+          <label className="field-label" htmlFor="mb-type">Event type</label>
+          <select id="mb-type" className="select" value={form.eventTypeId}
+                  onChange={(event) => setForm({ ...form, eventTypeId: event.target.value, startTime: "" })}>
+            {eventTypes.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.duration}m</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="mb-date">Date</label>
+          <input id="mb-date" className="input" type="date" value={form.date}
+                 onChange={(event) => setForm({ ...form, date: event.target.value, startTime: "" })} />
+        </div>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Time</span>
+        {loadingSlots ? (
+          <p className="hint">Loading open times…</p>
+        ) : slots.length === 0 ? (
+          <p className="hint">No open times that day — check your availability or pick another date.</p>
+        ) : (
+          <div className="slot-grid">
+            {slots.map((slot) => (
+              <button key={slot.start_utc} type="button"
+                      className={`slot${form.startTime === slot.start_utc ? " is-active" : ""}`}
+                      onClick={() => setForm({ ...form, startTime: slot.start_utc })}>
+                {slot.display_time}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid-2">
+        <div className="field">
+          <label className="field-label" htmlFor="mb-name">Guest name</label>
+          <input id="mb-name" className="input" value={form.name} placeholder="Jane Smith"
+                 onChange={(event) => setForm({ ...form, name: event.target.value })} />
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="mb-email">Guest email</label>
+          <input id="mb-email" className="input" type="email" value={form.email} placeholder="jane@example.com"
+                 onChange={(event) => setForm({ ...form, email: event.target.value })} />
+        </div>
+      </div>
+
+      <div className="field">
+        <label className="field-label" htmlFor="mb-notes">Notes <span className="opt">optional</span></label>
+        <textarea id="mb-notes" className="textarea" rows="2" value={form.notes}
+                  onChange={(event) => setForm({ ...form, notes: event.target.value })} />
+      </div>
+
+      <label className="check">
+        <input type="checkbox" checked={form.sendEmail}
+               onChange={(event) => setForm({ ...form, sendEmail: event.target.checked })} />
+        Email the guest a confirmation
+      </label>
+
+      <div>
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving ? <><span className="spinner" /> Adding…</> : "Add booking"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function RescheduleModal({ booking, timezone, onClose, onDone }) {
+  const toast = useToast();
+  const [date, setDate] = useState(toDateInputValue(new Date(booking.start_time)));
+  const [slots, setSlots] = useState([]);
+  const [selected, setSelected] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    function onKeyDown(event) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+    let cancelled = false;
+    (async () => {
+      const slug = booking.event_type?.url_slug;
+      if (!slug) return;
+      setLoading(true);
+      try {
+        const data = await api.getSlots(slug, date);
+        if (!cancelled) { setSlots(data); setSelected(""); }
+      } catch {
+        if (!cancelled) setSlots([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [booking.event_type?.url_slug, date]);
 
-  async function handleConfirm() {
-    if (!selectedSlot) return;
-    setSubmitting(true);
+  async function submit() {
+    if (!selected) return;
+    setSaving(true);
     try {
-      await api.rescheduleBooking(booking.id, { start_time: selectedSlot });
-      toast.success("Booking rescheduled.");
-      onSuccess();
+      await api.rescheduleBooking(booking.id, { start_time: selected });
+      toast.success("Booking moved. The guest has been emailed.");
+      onDone();
     } catch (error) {
-      toast.error(error.message || "Could not reschedule booking.");
+      toast.error(error.message || "Could not reschedule.");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
   return (
-    <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="modal-panel">
-        <header className="modal-header">
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="modal" onClick={(event) => event.stopPropagation()}>
+        <header className="modal-head">
           <div>
-            <p className="eyebrow">Reschedule booking</p>
-            <h3>{booking.event_type.title}</h3>
-            <p className="modal-subtitle">
-              {booking.booker_name} - {formatDateTime(booking.start_time)}
+            <h3 className="card-title">Move this booking</h3>
+            <p className="card-sub">
+              {booking.booker_name} · currently {formatFullIn(booking.start_time, timezone)}
             </p>
           </div>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-            x
-          </button>
+          <button className="btn btn-icon btn-ghost" onClick={onClose} aria-label="Close"><Icon name="close" size={16} /></button>
         </header>
 
-        <div className="modal-body">
-          <p className="modal-label">Pick a new date</p>
-          <div className="date-picker-grid" role="radiogroup">
-            {dateChoices.map((date) => {
-              const value = toDateInputValue(date);
-              const active = selectedDate === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  className={active ? "date-chip active" : "date-chip"}
-                  onClick={() => setSelectedDate(value)}
-                >
-                  {formatDate(date)}
-                </button>
-              );
-            })}
+        <div className="modal-body stack-4">
+          <div className="field" style={{ maxWidth: 220 }}>
+            <label className="field-label" htmlFor="rs-date">New date</label>
+            <input id="rs-date" className="input" type="date" value={date}
+                   min={toDateInputValue(new Date())}
+                   onChange={(event) => setDate(event.target.value)} />
           </div>
 
-          <p className="modal-label" style={{ marginTop: "var(--space-4)" }}>
-            Pick a new time
-          </p>
-          {loadingSlots ? (
-            <div className="slot-grid">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton key={index} height={44} />
-              ))}
-            </div>
+          {loading ? (
+            <p className="hint">Loading open times…</p>
           ) : slots.length === 0 ? (
-            <p style={{ color: "var(--text-muted)" }}>No slots available for this day.</p>
+            <p className="empty small">No open times on this day.</p>
           ) : (
-            <div className="slot-grid" role="radiogroup">
-              {slots.map((slot) => {
-                const active = selectedSlot === slot.start_time;
-                return (
-                  <button
-                    key={slot.start_time}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    className={active ? "slot-button active" : "slot-button"}
-                    onClick={() => setSelectedSlot(slot.start_time)}
-                  >
-                    {slot.display_time}
-                  </button>
-                );
-              })}
+            <div className="slot-grid">
+              {slots.map((slot) => (
+                <button key={slot.start_utc} type="button"
+                        className={`slot${selected === slot.start_utc ? " is-active" : ""}`}
+                        onClick={() => setSelected(slot.start_utc)}>
+                  {slot.display_time}
+                </button>
+              ))}
             </div>
           )}
         </div>
 
-        <footer className="modal-footer">
-          <button type="button" className="secondary-button" onClick={onClose} disabled={submitting}>
-            Cancel
-          </button>
-          <button type="button" className="primary-button" onClick={handleConfirm} disabled={!selectedSlot || submitting}>
-            {submitting ? "Rescheduling..." : "Confirm reschedule"}
+        <footer className="modal-foot">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={!selected || saving}>
+            {saving ? <><span className="spinner" /> Moving…</> : "Confirm new time"}
           </button>
         </footer>
       </div>

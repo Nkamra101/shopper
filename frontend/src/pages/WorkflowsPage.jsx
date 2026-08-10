@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import SectionCard from "../components/SectionCard";
+import EmptyState from "../components/EmptyState";
+import Icon from "../components/Icon";
 import { useToast } from "../components/Toast";
 import { api } from "../services/api";
 
-/**
- * Trigger values map 1:1 onto the backend. Time-based ones pair with
- * `offset_minutes`, which the reminder scheduler polls against.
- */
 const TRIGGERS = [
   { value: "booking_created", label: "Booking confirmed" },
   { value: "booking_cancelled", label: "Booking cancelled" },
@@ -15,7 +13,13 @@ const TRIGGERS = [
   { value: "after_event", label: "After the meeting" },
 ];
 
-const OFFSET_CHOICES = [
+const ACTIONS = [
+  { value: "email_guest", label: "Email the guest" },
+  { value: "email_host", label: "Email me" },
+  { value: "webhook", label: "Send a webhook" },
+];
+
+const OFFSETS = [
   { value: 15, label: "15 minutes" },
   { value: 30, label: "30 minutes" },
   { value: 60, label: "1 hour" },
@@ -25,171 +29,116 @@ const OFFSET_CHOICES = [
   { value: 10080, label: "1 week" },
 ];
 
-function offsetLabel(minutes) {
-  return OFFSET_CHOICES.find((choice) => choice.value === minutes)?.label || `${minutes} minutes`;
-}
-
-const ACTIONS = [
-  { value: "email_guest", label: "Email guest" },
-  { value: "email_host", label: "Email host" },
-  { value: "webhook", label: "Send webhook" },
-];
-
-const TEMPLATES = {
-  booking_created: {
-    subject: "Your booking is confirmed – {{event_title}}",
-    body: "Hi {{guest_name}},\n\nYour booking is confirmed for {{start_time}}.\n\nJoin here: {{meeting_url}}\n\nSee you soon!",
-  },
-  booking_cancelled: {
-    subject: "Your booking has been cancelled – {{event_title}}",
-    body: "Hi {{guest_name}},\n\nUnfortunately your booking for {{start_time}} has been cancelled.\n\nIf you'd like to reschedule, please visit the booking page.",
-  },
-  booking_rescheduled: {
-    subject: "Your booking has been rescheduled – {{event_title}}",
-    body: "Hi {{guest_name}},\n\nYour booking has been moved to {{start_time}}.\n\nJoin here: {{meeting_url}}",
-  },
-  before_event: {
-    subject: "Reminder: {{event_title}}",
-    body: "Hi {{guest_name}},\n\nThis is a reminder about your meeting at {{start_time}}.\n\nJoin here: {{meeting_url}}\n\nNeed to change plans? {{manage_url}}",
-  },
-  after_event: {
-    subject: "Thanks for meeting – {{event_title}}",
-    body: "Hi {{guest_name}},\n\nThank you for your time today! It was great connecting.\n\nLooking forward to speaking again.",
-  },
-};
+const TIME_BASED = new Set(["before_event", "after_event"]);
 
 const VARIABLES = [
   "{{guest_name}}", "{{guest_email}}", "{{event_title}}", "{{start_time}}",
   "{{meeting_url}}", "{{host_name}}", "{{manage_url}}",
 ];
 
-const EMPTY_FORM = {
-  name: "",
-  trigger: "booking_created",
-  action: "email_guest",
-  subject: TEMPLATES.booking_created.subject,
-  body: TEMPLATES.booking_created.body,
-  webhook_url: "",
-  active: true,
-  offset_minutes: 1440,
+const TEMPLATES = {
+  booking_created: {
+    subject: "You're booked — {{event_title}}",
+    body: "Hi {{guest_name}},\n\nYour meeting is confirmed for {{start_time}}.\n\nJoin here: {{meeting_url}}\n\nNeed to change it? {{manage_url}}",
+  },
+  booking_cancelled: {
+    subject: "Cancelled — {{event_title}}",
+    body: "Hi {{guest_name}},\n\nYour meeting on {{start_time}} has been cancelled.",
+  },
+  booking_rescheduled: {
+    subject: "Moved — {{event_title}}",
+    body: "Hi {{guest_name}},\n\nYour meeting has moved to {{start_time}}.\n\nJoin here: {{meeting_url}}",
+  },
+  before_event: {
+    subject: "Reminder — {{event_title}}",
+    body: "Hi {{guest_name}},\n\nA reminder about your meeting at {{start_time}}.\n\nJoin here: {{meeting_url}}\n\nNeed to change it? {{manage_url}}",
+  },
+  after_event: {
+    subject: "Thanks for meeting — {{event_title}}",
+    body: "Hi {{guest_name}},\n\nThanks for your time today. It was good to talk.",
+  },
 };
 
-const TIME_BASED = new Set(["before_event", "after_event"]);
+const EMPTY = {
+  name: "", trigger: "booking_created", action: "email_guest",
+  subject: TEMPLATES.booking_created.subject, body: TEMPLATES.booking_created.body,
+  webhook_url: "", active: true, offset_minutes: 1440,
+};
 
-function TriggerBadge({ workflow }) {
-  const trigger = TRIGGERS.find((item) => item.value === workflow.trigger);
-  if (!trigger) return null;
-
-  const suffix = TIME_BASED.has(workflow.trigger)
-    ? ` · ${offsetLabel(workflow.offset_minutes ?? 1440)} ${workflow.trigger === "before_event" ? "before" : "after"}`
-    : "";
-
-  return <span className="workflow-trigger-badge">{trigger.label}{suffix}</span>;
-}
-
-function WorkflowCard({ workflow, onEdit, onToggle, onDelete, saving }) {
-  const actionLabel = ACTIONS.find((a) => a.value === workflow.action)?.label || workflow.action;
-
-  return (
-    <article className={`workflow-card ${workflow.active ? "" : "paused"}`}>
-      <div className="workflow-card-top">
-        <div className="workflow-card-meta">
-          <TriggerBadge workflow={workflow} />
-        </div>
-        <h4 className="workflow-card-name">{workflow.name}</h4>
-        <p className="workflow-card-action">
-          <span className={`workflow-state ${workflow.active ? "active" : "paused"}`}>
-            {workflow.active ? "Active" : "Paused"}
-          </span>
-          <span style={{ color: "var(--text-muted)", fontSize: 13 }}>·</span>
-          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{actionLabel}</span>
-        </p>
-      </div>
-      <div className="workflow-preview">
-        {workflow.action === "webhook"
-          ? workflow.webhook_url || <em style={{ color: "var(--text-subtle)" }}>No URL set</em>
-          : workflow.subject || <em style={{ color: "var(--text-subtle)" }}>No subject</em>}
-      </div>
-      <div className="workflow-card-actions">
-        <button type="button" className="secondary-button" onClick={() => onEdit(workflow)}>Edit</button>
-        <button
-          type="button"
-          className={workflow.active ? "ghost-button" : "primary-button"}
-          onClick={() => onToggle(workflow)}
-          disabled={saving === workflow.id}
-        >
-          {saving === workflow.id ? <span className="btn-spinner" /> : workflow.active ? "Pause" : "Activate"}
-        </button>
-        <button type="button" className="ghost-button danger" onClick={() => onDelete(workflow.id)}>
-          Delete
-        </button>
-      </div>
-    </article>
-  );
+function describe(workflow) {
+  const trigger = TRIGGERS.find((item) => item.value === workflow.trigger)?.label || workflow.trigger;
+  if (!TIME_BASED.has(workflow.trigger)) return trigger;
+  const offset = OFFSETS.find((item) => item.value === (workflow.offset_minutes ?? 1440))?.label
+    || `${workflow.offset_minutes} minutes`;
+  return `${offset} ${workflow.trigger === "before_event" ? "before" : "after"} the meeting`;
 }
 
 export default function WorkflowsPage() {
   const toast = useToast();
   const [workflows, setWorkflows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [savingToggle, setSavingToggle] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   useEffect(() => {
     api.getWorkflows()
-      .then((data) => setWorkflows(data))
-      .catch((err) => toast.error(err.message || "Could not load workflows."))
+      .then(setWorkflows)
+      .catch((error) => toast.error(error.message || "Could not load workflows."))
       .finally(() => setLoading(false));
   }, [toast]);
 
-  const activeCount = useMemo(() => workflows.filter((w) => w.active).length, [workflows]);
+  const activeCount = useMemo(() => workflows.filter((item) => item.active).length, [workflows]);
 
-  function updateTrigger(trigger) {
-    const tpl = TEMPLATES[trigger];
-    setForm((f) => ({ ...f, trigger, subject: tpl?.subject || f.subject, body: tpl?.body || f.body }));
+  function reset() {
+    setForm(EMPTY);
+    setEditingId(null);
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!form.name.trim()) { toast.error("Add a workflow name."); return; }
-    setSubmitting(true);
+  function changeTrigger(trigger) {
+    const template = TEMPLATES[trigger];
+    setForm((current) => ({
+      ...current,
+      trigger,
+      subject: template?.subject ?? current.subject,
+      body: template?.body ?? current.body,
+    }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!form.name.trim()) { toast.error("Give the workflow a name."); return; }
+    if (form.action === "webhook" && !/^https?:\/\//.test(form.webhook_url.trim())) {
+      toast.error("Webhook URL must start with http:// or https://.");
+      return;
+    }
+    if (form.action !== "webhook" && !form.subject.trim() && !form.body.trim()) {
+      toast.error("Add a subject or a body for the email.");
+      return;
+    }
+
+    setSaving(true);
     try {
-      const payload = {
-        name: form.name.trim(),
-        trigger: form.trigger,
-        action: form.action,
-        subject: form.subject,
-        body: form.body,
-        webhook_url: form.webhook_url,
-        active: form.active,
-        offset_minutes: form.offset_minutes,
-      };
+      const payload = { ...form, name: form.name.trim() };
       if (editingId) {
         const updated = await api.updateWorkflow(editingId, payload);
-        setWorkflows((wf) => wf.map((w) => (w.id === editingId ? updated : w)));
+        setWorkflows((current) => current.map((item) => (item.id === editingId ? updated : item)));
         toast.success("Workflow updated.");
       } else {
         const created = await api.createWorkflow(payload);
-        setWorkflows((wf) => [...wf, created]);
+        setWorkflows((current) => [...current, created]);
         toast.success("Workflow created.");
       }
-      cancelEdit();
-    } catch (err) {
-      toast.error(err.message || "Could not save workflow.");
+      reset();
+    } catch (error) {
+      toast.error(error.message || "Could not save the workflow.");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-  }
-
-  function startEdit(workflow) {
+  function edit(workflow) {
     setEditingId(workflow.id);
     setForm({
       name: workflow.name,
@@ -204,199 +153,180 @@ export default function WorkflowsPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function handleToggle(workflow) {
-    setSavingToggle(workflow.id);
+  async function toggle(workflow) {
+    setTogglingId(workflow.id);
     try {
       const updated = await api.toggleWorkflow(workflow.id);
-      setWorkflows((wf) => wf.map((w) => (w.id === workflow.id ? updated : w)));
-      toast.success(updated.active ? "Workflow activated." : "Workflow paused.");
-    } catch (err) {
-      toast.error(err.message || "Could not toggle workflow.");
+      setWorkflows((current) => current.map((item) => (item.id === workflow.id ? updated : item)));
+    } catch (error) {
+      toast.error(error.message || "Could not update it.");
     } finally {
-      setSavingToggle(null);
+      setTogglingId(null);
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm("Delete this workflow? This cannot be undone.")) return;
-    setDeletingId(id);
+  async function remove(workflow) {
+    if (!window.confirm(`Delete “${workflow.name}”?`)) return;
     try {
-      await api.deleteWorkflow(id);
-      setWorkflows((wf) => wf.filter((w) => w.id !== id));
-      if (editingId === id) cancelEdit();
+      await api.deleteWorkflow(workflow.id);
+      setWorkflows((current) => current.filter((item) => item.id !== workflow.id));
+      if (editingId === workflow.id) reset();
       toast.success("Workflow deleted.");
-    } catch (err) {
-      toast.error(err.message || "Could not delete workflow.");
-    } finally {
-      setDeletingId(null);
+    } catch (error) {
+      toast.error(error.message || "Could not delete it.");
     }
   }
 
   function insertVariable(variable) {
-    const field = form.action !== "webhook" ? "body" : "webhook_url";
-    setForm((f) => ({ ...f, [field]: f[field] + variable }));
+    const field = form.action === "webhook" ? "webhook_url" : "body";
+    setForm((current) => ({ ...current, [field]: `${current[field]}${variable}` }));
   }
 
   return (
     <div className="stack">
-      <section className="workflows-hero">
-        <div>
-          <p className="eyebrow">Automation</p>
-          <h3>Keep guests informed without extra manual work.</h3>
-          <p>Workflows let Shopper send confirmations and notifications at exactly the right moment — no manual follow-up needed.</p>
-        </div>
-        <div className="workflows-hero-stats">
-          <div className="workflows-stat-card">
-            <span>Total</span>
-            <strong>{loading ? "…" : workflows.length}</strong>
-          </div>
-          <div className="workflows-stat-card">
-            <span>Active</span>
-            <strong>{loading ? "…" : activeCount}</strong>
-          </div>
-          <div className="workflows-stat-card">
-            <span>Paused</span>
-            <strong>{loading ? "…" : workflows.length - activeCount}</strong>
-          </div>
-        </div>
-      </section>
+      <div className="grid-auto">
+        <div className="card stat"><p className="stat-label">Workflows</p><p className="stat-value">{loading ? "—" : workflows.length}</p></div>
+        <div className="card stat"><p className="stat-label">Active</p><p className="stat-value">{loading ? "—" : activeCount}</p></div>
+        <div className="card stat"><p className="stat-label">Paused</p><p className="stat-value">{loading ? "—" : workflows.length - activeCount}</p></div>
+      </div>
 
-      <div className="workflows-layout">
+      <div className="split">
+        <SectionCard title="Your workflows" subtitle="These run automatically — nothing to trigger by hand.">
+          {loading ? (
+            <p className="hint">Loading…</p>
+          ) : workflows.length === 0 ? (
+            <EmptyState
+              icon="zap"
+              title="No workflows yet"
+              description="Add a reminder that goes out 24 hours before every meeting, or a webhook that posts to Slack."
+            />
+          ) : (
+            <div className="stack-3">
+              {workflows.map((workflow) => (
+                <article key={workflow.id} className={`item${workflow.active ? "" : " is-muted"}`} style={{ flexDirection: "column" }}>
+                  <div className="row-between" style={{ width: "100%", alignItems: "flex-start" }}>
+                    <div className="item-main">
+                      <div className="row-2" style={{ flexWrap: "wrap" }}>
+                        <h3 className="item-title">{workflow.name}</h3>
+                        <span className={`badge ${workflow.active ? "badge-ok" : ""}`}>{workflow.active ? "Active" : "Paused"}</span>
+                      </div>
+                      <p className="tiny subtle" style={{ marginTop: 4 }}>
+                        {describe(workflow)} · {ACTIONS.find((item) => item.value === workflow.action)?.label}
+                      </p>
+                      <p className="small muted break" style={{ marginTop: "var(--s3)" }}>
+                        {workflow.action === "webhook"
+                          ? workflow.webhook_url || "No URL set"
+                          : workflow.subject || "No subject"}
+                      </p>
+                    </div>
+
+                    <div className="item-actions">
+                      <button className="btn btn-sm" onClick={() => edit(workflow)}>Edit</button>
+                      <button className="btn btn-sm" onClick={() => toggle(workflow)} disabled={togglingId === workflow.id}>
+                        {togglingId === workflow.id ? <span className="spinner" /> : workflow.active ? "Pause" : "Activate"}
+                      </button>
+                      <button className="btn btn-icon btn-ghost btn-danger" onClick={() => remove(workflow)} aria-label="Delete">
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
         <SectionCard
           title={editingId ? "Edit workflow" : "New workflow"}
-          subtitle="Choose a trigger and define what should happen next."
+          subtitle="Choose when it runs and what it does."
+          actions={editingId ? <button className="btn btn-sm btn-ghost" onClick={reset}>Cancel</button> : null}
         >
-          <form className="workflow-form" onSubmit={handleSubmit}>
-            <label>
-              Workflow name
-              <input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Confirmation email"
-                autoFocus={!!editingId}
-              />
-            </label>
+          <form className="stack-4" onSubmit={submit}>
+            <div className="field">
+              <label className="field-label" htmlFor="wf-name">Name</label>
+              <input id="wf-name" className="input" value={form.name} placeholder="24 hour reminder"
+                     onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            </div>
 
-            <label>
-              Trigger
-              <select value={form.trigger} onChange={(e) => updateTrigger(e.target.value)}>
-                {TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            <div className="field">
+              <label className="field-label" htmlFor="wf-trigger">When</label>
+              <select id="wf-trigger" className="select" value={form.trigger}
+                      onChange={(event) => changeTrigger(event.target.value)}>
+                {TRIGGERS.map((trigger) => <option key={trigger.value} value={trigger.value}>{trigger.label}</option>)}
               </select>
-            </label>
+            </div>
 
             {TIME_BASED.has(form.trigger) && (
-              <label>
-                How long {form.trigger === "before_event" ? "before" : "after"} the meeting?
-                <select
-                  value={form.offset_minutes}
-                  onChange={(e) => setForm({ ...form, offset_minutes: Number(e.target.value) })}
-                >
-                  {OFFSET_CHOICES.map((choice) => (
-                    <option key={choice.value} value={choice.value}>{choice.label}</option>
-                  ))}
+              <div className="field">
+                <label className="field-label" htmlFor="wf-offset">
+                  How long {form.trigger === "before_event" ? "before" : "after"}?
+                </label>
+                <select id="wf-offset" className="select" value={form.offset_minutes}
+                        onChange={(event) => setForm({ ...form, offset_minutes: Number(event.target.value) })}>
+                  {OFFSETS.map((offset) => <option key={offset.value} value={offset.value}>{offset.label}</option>)}
                 </select>
-                <p className="field-hint">
-                  Checked every minute by the reminder scheduler. Each guest receives this once.
-                </p>
-              </label>
+                <span className="hint">Checked every minute. Each guest gets it once.</span>
+              </div>
             )}
 
-            <label>
-              Action
-              <select value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value })}>
-                {ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            <div className="field">
+              <label className="field-label" htmlFor="wf-action">Then</label>
+              <select id="wf-action" className="select" value={form.action}
+                      onChange={(event) => setForm({ ...form, action: event.target.value })}>
+                {ACTIONS.map((action) => <option key={action.value} value={action.value}>{action.label}</option>)}
               </select>
-            </label>
+            </div>
 
             {form.action === "webhook" ? (
-              <label>
-                Webhook URL
-                <input
-                  type="url"
-                  value={form.webhook_url}
-                  onChange={(e) => setForm({ ...form, webhook_url: e.target.value })}
-                  placeholder="https://example.com/hooks/shopper"
-                />
-              </label>
+              <div className="field">
+                <label className="field-label" htmlFor="wf-url">Webhook URL</label>
+                <input id="wf-url" className="input input-mono" type="url" value={form.webhook_url}
+                       placeholder="https://hooks.slack.com/services/…"
+                       onChange={(event) => setForm({ ...form, webhook_url: event.target.value })} />
+              </div>
             ) : (
               <>
-                <label>
-                  Email subject
-                  <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} />
-                </label>
-                <label>
-                  Email body
-                  <textarea rows="7" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} />
-                </label>
-                <div className="workflow-variables">
-                  <p className="eyebrow" style={{ marginBottom: "var(--space-2)" }}>Insert variable</p>
-                  <div className="workflow-variable-chips">
-                    {VARIABLES.map((v) => (
-                      <button key={v} type="button" className="workflow-variable-chip" onClick={() => insertVariable(v)}>
-                        {v}
-                      </button>
-                    ))}
-                  </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="wf-subject">Subject</label>
+                  <input id="wf-subject" className="input" value={form.subject}
+                         onChange={(event) => setForm({ ...form, subject: event.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="field-label" htmlFor="wf-body">Message</label>
+                  <textarea id="wf-body" className="textarea" rows="6" value={form.body}
+                            onChange={(event) => setForm({ ...form, body: event.target.value })} />
                 </div>
               </>
             )}
 
-            <label className="toggle-row">
-              <span>
-                <strong>Active</strong>
-                <p style={{ margin: "2px 0 0", fontSize: 13, color: "var(--text-muted)", fontWeight: 400 }}>
-                  Pause to stop this workflow from firing.
-                </p>
-              </span>
-              <button
-                type="button"
-                className={`toggle-switch ${form.active ? "on" : ""}`}
-                onClick={() => setForm({ ...form, active: !form.active })}
-              >
-                <span className="toggle-knob" />
-              </button>
-            </label>
+            <div className="field">
+              <span className="field-label">Insert a value</span>
+              <div className="row-wrap" style={{ gap: 5 }}>
+                {VARIABLES.map((variable) => (
+                  <button key={variable} type="button" className="badge badge-mono" onClick={() => insertVariable(variable)}>
+                    {variable}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-            <div className="button-row">
-              <button type="submit" className="primary-button" disabled={submitting}>
-                {submitting ? <><span className="btn-spinner" />{editingId ? "Saving…" : "Creating…"}</> : editingId ? "Save changes" : "Create workflow"}
+            <div className="panel row-between">
+              <div>
+                <p className="small" style={{ fontWeight: 600 }}>Active</p>
+                <p className="hint">Paused workflows never fire.</p>
+              </div>
+              <button type="button" className="switch" role="switch" aria-checked={form.active}
+                      aria-label="Active"
+                      onClick={() => setForm({ ...form, active: !form.active })} />
+            </div>
+
+            <div className="row-2">
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? <><span className="spinner" /> Saving…</> : editingId ? "Save changes" : "Create workflow"}
               </button>
-              {editingId && (
-                <button type="button" className="secondary-button" onClick={cancelEdit}>Cancel</button>
-              )}
+              {editingId && <button type="button" className="btn btn-ghost" onClick={reset}>Cancel</button>}
             </div>
           </form>
-        </SectionCard>
-
-        <SectionCard title="Your workflows" subtitle="Automations that run when booking events occur.">
-          {loading ? (
-            <div className="workflow-list">
-              {[1, 2].map((n) => (
-                <div key={n} className="workflow-card" style={{ minHeight: 120, opacity: 0.5 }} />
-              ))}
-            </div>
-          ) : workflows.length === 0 ? (
-            <div className="chart-empty" style={{ padding: "var(--space-10) 0" }}>
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 12, opacity: 0.3 }}>
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-              <p style={{ fontWeight: 600, marginBottom: 4 }}>No workflows yet</p>
-              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Create your first workflow to start automating booking notifications.</p>
-            </div>
-          ) : (
-            <div className="workflow-list">
-              {workflows.map((workflow) => (
-                <WorkflowCard
-                  key={workflow.id}
-                  workflow={workflow}
-                  onEdit={startEdit}
-                  onToggle={handleToggle}
-                  onDelete={handleDelete}
-                  saving={savingToggle}
-                />
-              ))}
-            </div>
-          )}
         </SectionCard>
       </div>
     </div>

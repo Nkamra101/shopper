@@ -120,7 +120,7 @@ export default function LoginPage() {
                     className="input"
                     value={form.name}
                     onChange={(event) => set("name", event.target.value)}
-                    placeholder="Priya Nair"
+                    placeholder="Ananya"
                     autoComplete="name"
                     aria-invalid={errors.name ? "true" : "false"}
                   />
