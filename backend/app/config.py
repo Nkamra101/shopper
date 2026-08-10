@@ -85,7 +85,12 @@ class Settings:
     GOOGLE_REDIRECT_URI: str = os.getenv(
         "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback"
     )
+
+    # ----- Public URLs -----
+    # FRONTEND_URL builds the invitee's manage/reschedule links; API_PUBLIC_URL
+    # builds the iCal subscription URL. Both must be reachable from outside.
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    API_PUBLIC_URL: str = os.getenv("API_PUBLIC_URL", "http://localhost:8000")
 
     # ----- OTP -----
     OTP_TTL_SECONDS: int = int(os.getenv("OTP_TTL_SECONDS", "600"))

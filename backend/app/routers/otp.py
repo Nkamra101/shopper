@@ -1,18 +1,29 @@
 """Public OTP endpoints used by the booker before they're allowed to /book."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.database import Database
 
 from ..config import settings
 from ..database import get_db
 from ..schemas import OtpRequest, OtpRequestResponse, OtpVerify, OtpVerifyResponse
 from ..services import otp_service
+from ..services.rate_limit import check_rate_limit, client_ip
 
 router = APIRouter(prefix="/api/public/otp", tags=["otp"])
 
 
 @router.post("/request", response_model=OtpRequestResponse)
-def request_code(payload: OtpRequest, db: Database = Depends(get_db)):
+def request_code(payload: OtpRequest, request: Request, db: Database = Depends(get_db)):
+    # Per-email throttling lives in otp_service; this caps how many distinct
+    # addresses one client can blast codes at.
+    check_rate_limit(
+        db,
+        bucket="otp_request",
+        identifier=client_ip(request),
+        limit=settings.RATE_LIMIT_OTP,
+        window_seconds=settings.RATE_LIMIT_OTP_WINDOW,
+    )
+
     if not settings.email_enabled:
         raise HTTPException(
             status_code=503,
@@ -35,7 +46,15 @@ def request_code(payload: OtpRequest, db: Database = Depends(get_db)):
 
 
 @router.post("/verify", response_model=OtpVerifyResponse)
-def verify_code(payload: OtpVerify, db: Database = Depends(get_db)):
+def verify_code(payload: OtpVerify, request: Request, db: Database = Depends(get_db)):
+    check_rate_limit(
+        db,
+        bucket="otp_verify",
+        identifier=client_ip(request),
+        limit=settings.RATE_LIMIT_OTP * 3,
+        window_seconds=settings.RATE_LIMIT_OTP_WINDOW,
+    )
+
     result = otp_service.verify_otp(db, payload.email, payload.code)
     if not result.ok:
         raise HTTPException(status_code=400, detail=result.error or "Invalid code.")

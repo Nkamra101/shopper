@@ -1,23 +1,17 @@
-bcrypt==4.3.0
-httpx==0.28.1
-passlib==1.7.4
-python-jose[cryptography]==3.3.0
-anyio==4.13.0
-click==8.3.1
-colorama==0.4.6
-email-validator==2.3.0
 fastapi==0.115.12
-h11==0.16.0
-httptools==0.7.1
-idna==3.11
-pymongo[srv]==4.10.1
+starlette==0.46.2
+uvicorn[standard]==0.34.3
 pydantic==2.12.5
 pydantic_core==2.41.5
+email-validator==2.3.0
+
+pymongo[srv]==4.10.1
 python-dotenv==1.2.2
-PyYAML==6.0.3
-starlette==0.46.2
-typing_extensions==4.15.0
+
+# Auth: bcrypt is used directly (passlib is unmaintained and breaks on
+# bcrypt >= 4.1), python-jose signs and verifies the JWTs.
+bcrypt==4.3.0
+python-jose[cryptography]==3.3.0
+
+httpx==0.28.1
 tzdata==2025.3
-uvicorn==0.34.3
-watchfiles==1.1.1
-websockets==16.0

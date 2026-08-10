@@ -284,49 +284,67 @@ def send_email_now(
     return _send_with_retry(msg)
 
 
+_SUBJECTS = {
+    "booked": "Booking confirmed: {title}",
+    "rescheduled": "Booking rescheduled: {title}",
+    "cancelled": "Booking cancelled: {title}",
+    "host_notified": "New booking: {title}",
+    "host_cancelled_by_guest": "Guest cancelled: {title}",
+    "host_rescheduled_by_guest": "Guest rescheduled: {title}",
+}
+
+_HOST_ACTIONS = {"host_notified", "host_cancelled_by_guest", "host_rescheduled_by_guest"}
+
+
 def send_email_background(
     action: str,
     recipient: str,
     event_title: str,
     start_time: str,
     meeting_url: Optional[str] = None,
+    manage_token: Optional[str] = None,
+    guest_name: str = "",
+    guest_email: str = "",
 ) -> None:
     """Fire-and-forget booking lifecycle email.
 
     Designed for use with FastAPI's ``BackgroundTasks``. Never raises.
     """
+    subject_template = _SUBJECTS.get(action)
+    if not subject_template:
+        logger.error("Unknown booking email action: %s", action)
+        return
+    subject = subject_template.format(title=event_title)
+
     if settings.email_delivery_mode == "console":
-        subject_map = {
-            "booked": f"Booking confirmed: {event_title}",
-            "rescheduled": f"Booking rescheduled: {event_title}",
-            "cancelled": f"Booking cancelled: {event_title}",
-        }
-        subject = subject_map.get(action, f"Booking update: {event_title}")
         _log_console_email(
             subject=subject,
             recipient=recipient,
-            text_body=f"{action}\nEvent: {event_title}\nWhen: {start_time}\nMeeting URL: {meeting_url or 'n/a'}",
+            text_body=(
+                f"{action}\nEvent: {event_title}\nWhen: {start_time}\n"
+                f"Meeting URL: {meeting_url or 'n/a'}\n"
+                f"Manage: {manage_url_for(manage_token) or 'n/a'}"
+            ),
         )
         return
     if settings.email_delivery_mode == "disabled":
         logger.warning("Email delivery disabled; skipping '%s' email to %s", action, recipient)
         return
 
-    subject_map = {
-        "booked": f"Booking confirmed: {event_title}",
-        "rescheduled": f"Booking rescheduled: {event_title}",
-        "cancelled": f"Booking cancelled: {event_title}",
-    }
-    subject = subject_map.get(action)
-    if not subject:
-        logger.error("Unknown booking email action: %s", action)
-        return
+    if action in _HOST_ACTIONS:
+        html_body, text_body = _host_booking_html(
+            action, event_title, start_time, meeting_url, guest_name, guest_email
+        )
+    else:
+        html_body, text_body = _guest_booking_html(
+            action, event_title, start_time, meeting_url, manage_token
+        )
 
-    html_body, text_body = _booking_html(action, event_title, start_time, meeting_url)
-    msg = _build_message(
-        subject=subject, recipient=recipient, html_body=html_body, text_body=text_body
+    _send_with_retry(
+        _build_message(
+            subject=subject, recipient=recipient, html_body=html_body, text_body=text_body
+        )
     )
-    _send_with_retry(msg)
 
 
 def send_otp_email(recipient: str, code: str, ttl_seconds: int) -> bool:
