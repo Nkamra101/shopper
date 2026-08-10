@@ -71,9 +71,12 @@ def rotate_feed_url(user: dict = Depends(require_user), db: Database = Depends(g
     return {"url": f"{settings.API_PUBLIC_URL.rstrip('/')}/api/public/ical/{token}.ics"}
 
 
-@public_router.get("/ical/{token}.ics", summary="Private iCal feed")
-@public_router.get("/ical/{token}", include_in_schema=False)
+@public_router.get("/ical/{token}", summary="Private iCal feed")
 def get_ical_feed(token: str, db: Database = Depends(get_db)):
+    # Calendar clients want a .ics URL, but a path parameter swallows the
+    # extension, so strip it here rather than registering two routes.
+    token = token[:-4] if token.endswith(".ics") else token
+
     user = db.users.find_one({"calendar_token": token})
     if not user:
         raise HTTPException(status_code=404, detail="Calendar feed not found.")
