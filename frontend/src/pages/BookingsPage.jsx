@@ -6,7 +6,7 @@ import { useToast } from "../components/Toast";
 import { api } from "../services/api";
 import { formatDate, formatDateTime, getUpcomingDates, toDateInputValue } from "../utils/date";
 
-const SCOPES = ["upcoming", "past", "all"];
+const SCOPES = ["upcoming", "past", "cancelled", "all"];
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validatePortalForm(form) {
@@ -40,6 +40,7 @@ export default function BookingsPage() {
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkCancelling, setBulkCancelling] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [creatingBooking, setCreatingBooking] = useState(false);
   const [editingNotes, setEditingNotes] = useState({ id: null, text: "" });
   const [savingNotes, setSavingNotes] = useState(false);
@@ -225,28 +226,21 @@ export default function BookingsPage() {
     }
   }
 
-  function exportCsv() {
-    const rows = [
-      ["ID", "Guest Name", "Guest Email", "Event Type", "Start Time", "Status", "Notes"],
-      ...filtered.map((booking) => [
-        booking.id,
-        booking.booker_name,
-        booking.booker_email,
-        booking.event_type?.title || "",
-        booking.start_time,
-        booking.status,
-        (booking.notes || "").replaceAll(",", ";"),
-      ]),
-    ];
-    const csv = rows.map((row) => row.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `bookings-${scope}-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    toast.success("CSV exported.");
+  /**
+   * Exported server-side so values are properly quoted (a comma in a guest
+   * name used to corrupt the file), and so the rows include booking answers
+   * and times in the host's own timezone.
+   */
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      await api.exportBookingsCsv({ scope, search: search.trim() });
+      toast.success("CSV exported.");
+    } catch (error) {
+      toast.error(error.message || "Could not export CSV.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function handleSaveNotes(bookingId) {
@@ -488,8 +482,8 @@ export default function BookingsPage() {
                 </button>
               )}
             </div>
-            <button className="secondary-button" onClick={exportCsv} disabled={filtered.length === 0}>
-              Export CSV
+            <button className="secondary-button" onClick={exportCsv} disabled={exporting || filtered.length === 0}>
+              {exporting ? "Exporting..." : "Export CSV"}
             </button>
           </div>
         </div>

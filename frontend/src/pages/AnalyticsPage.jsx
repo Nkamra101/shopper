@@ -31,7 +31,9 @@ function TrendChart({ data }) {
   const line = pts.map((p) => `${p.x},${p.y}`).join(" ");
   const area = `${PAD.left},${PAD.top + plotH} ${line} ${W - PAD.right},${PAD.top + plotH}`;
 
-  const yTicks = [0, Math.round(max / 2), max];
+  // Deduped: a small max (say 1) collapses the midpoint onto an endpoint,
+  // which would render two axis lines with the same React key.
+  const yTicks = [...new Set([0, Math.round(max / 2), max])];
   const xLabels = data.filter((_, i) => i % Math.ceil(data.length / 6) === 0);
 
   return (

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ThemeToggle from "../components/ThemeToggle";
-import CursorParticles from "../components/CursorParticles";
 import { useAuth } from "../components/AuthContext";
 import { useToast } from "../components/Toast";
 import { api } from "../services/api";
@@ -59,7 +58,6 @@ export default function LoginPage() {
 
   return (
     <div className="login-page">
-      <CursorParticles />
 
       <header className="login-topbar">
         <Link to="/" className="brand-block" style={{ gap: 10, textDecoration: "none" }}>

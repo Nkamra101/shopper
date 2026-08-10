@@ -1,0 +1,46 @@
+# Keeps the Render free-tier backend from idling out.
+#
+# Render suspends a free web service after ~15 minutes without traffic, and
+# waking it costs the visitor ~50 seconds. Pinging /health every 14 minutes
+# keeps it warm.
+#
+# Budget note: the free tier allows 750 instance-hours per month and a month
+# is ~730 hours, so a single always-on service fits — but only just. Do not
+# run a second free service in the same account while this is enabled.
+#
+# GitHub may disable schedules on repos with no activity for 60 days; if the
+# backend starts sleeping again, check that this workflow is still enabled.
+
+name: Keep backend awake
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping health endpoint
+        env:
+          # Override in repo Settings -> Secrets and variables -> Variables
+          # if the backend URL changes.
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://shopper-backend-2n4n.onrender.com' }}
+        run: |
+          echo "Pinging $BACKEND_URL/health"
+          # --max-time 90 covers a cold start; retries cover a flaky wake-up.
+          status=$(curl -sS --max-time 90 --retry 2 --retry-delay 15 \
+            -o /tmp/health.json -w "%{http_code}" "$BACKEND_URL/health") || true
+
+          echo "HTTP $status"
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+
+          if [ "$status" != "200" ]; then
+            echo "::warning::Health check returned $status"
+          fi

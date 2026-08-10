@@ -3,14 +3,31 @@ import SectionCard from "../components/SectionCard";
 import { useToast } from "../components/Toast";
 import { api } from "../services/api";
 
+/**
+ * Trigger values map 1:1 onto the backend. Time-based ones pair with
+ * `offset_minutes`, which the reminder scheduler polls against.
+ */
 const TRIGGERS = [
-  { value: "booking_created", label: "Booking confirmed", icon: "✓", color: "#059669" },
-  { value: "booking_cancelled", label: "Booking cancelled", icon: "✕", color: "#dc2626" },
-  { value: "booking_rescheduled", label: "Booking rescheduled", icon: "↻", color: "#d97706" },
-  { value: "reminder_24h", label: "24 hours before meeting", icon: "⏰", color: "#0891b2" },
-  { value: "reminder_1h", label: "1 hour before meeting", icon: "⏱", color: "#7c3aed" },
-  { value: "after_meeting", label: "After meeting ends", icon: "✉", color: "#6366f1" },
+  { value: "booking_created", label: "Booking confirmed" },
+  { value: "booking_cancelled", label: "Booking cancelled" },
+  { value: "booking_rescheduled", label: "Booking rescheduled" },
+  { value: "before_event", label: "Before the meeting" },
+  { value: "after_event", label: "After the meeting" },
 ];
+
+const OFFSET_CHOICES = [
+  { value: 15, label: "15 minutes" },
+  { value: 30, label: "30 minutes" },
+  { value: 60, label: "1 hour" },
+  { value: 120, label: "2 hours" },
+  { value: 1440, label: "24 hours" },
+  { value: 2880, label: "2 days" },
+  { value: 10080, label: "1 week" },
+];
+
+function offsetLabel(minutes) {
+  return OFFSET_CHOICES.find((choice) => choice.value === minutes)?.label || `${minutes} minutes`;
+}
 
 const ACTIONS = [
   { value: "email_guest", label: "Email guest" },
@@ -31,21 +48,20 @@ const TEMPLATES = {
     subject: "Your booking has been rescheduled – {{event_title}}",
     body: "Hi {{guest_name}},\n\nYour booking has been moved to {{start_time}}.\n\nJoin here: {{meeting_url}}",
   },
-  reminder_24h: {
-    subject: "Reminder: your meeting tomorrow – {{event_title}}",
-    body: "Hi {{guest_name}},\n\nThis is a reminder that your meeting is tomorrow at {{start_time}}.\n\nJoin here: {{meeting_url}}",
+  before_event: {
+    subject: "Reminder: {{event_title}}",
+    body: "Hi {{guest_name}},\n\nThis is a reminder about your meeting at {{start_time}}.\n\nJoin here: {{meeting_url}}\n\nNeed to change plans? {{manage_url}}",
   },
-  reminder_1h: {
-    subject: "Your meeting starts in 1 hour – {{event_title}}",
-    body: "Hi {{guest_name}},\n\nYour meeting starts in 1 hour at {{start_time}}.\n\nJoin here: {{meeting_url}}",
-  },
-  after_meeting: {
+  after_event: {
     subject: "Thanks for meeting – {{event_title}}",
     body: "Hi {{guest_name}},\n\nThank you for your time today! It was great connecting.\n\nLooking forward to speaking again.",
   },
 };
 
-const VARIABLES = ["{{guest_name}}", "{{event_title}}", "{{start_time}}", "{{meeting_url}}", "{{host_name}}"];
+const VARIABLES = [
+  "{{guest_name}}", "{{guest_email}}", "{{event_title}}", "{{start_time}}",
+  "{{meeting_url}}", "{{host_name}}", "{{manage_url}}",
+];
 
 const EMPTY_FORM = {
   name: "",
@@ -55,30 +71,30 @@ const EMPTY_FORM = {
   body: TEMPLATES.booking_created.body,
   webhook_url: "",
   active: true,
+  offset_minutes: 1440,
 };
 
-const TIME_BASED = new Set(["reminder_24h", "reminder_1h", "after_meeting"]);
+const TIME_BASED = new Set(["before_event", "after_event"]);
 
-function TriggerBadge({ trigger }) {
-  const t = TRIGGERS.find((t) => t.value === trigger);
-  if (!t) return null;
-  return (
-    <span className="workflow-trigger-badge" style={{ background: t.color + "18", color: t.color, borderColor: t.color + "30" }}>
-      {t.icon} {t.label}
-    </span>
-  );
+function TriggerBadge({ workflow }) {
+  const trigger = TRIGGERS.find((item) => item.value === workflow.trigger);
+  if (!trigger) return null;
+
+  const suffix = TIME_BASED.has(workflow.trigger)
+    ? ` · ${offsetLabel(workflow.offset_minutes ?? 1440)} ${workflow.trigger === "before_event" ? "before" : "after"}`
+    : "";
+
+  return <span className="workflow-trigger-badge">{trigger.label}{suffix}</span>;
 }
 
 function WorkflowCard({ workflow, onEdit, onToggle, onDelete, saving }) {
   const actionLabel = ACTIONS.find((a) => a.value === workflow.action)?.label || workflow.action;
-  const isTimeBased = TIME_BASED.has(workflow.trigger);
 
   return (
     <article className={`workflow-card ${workflow.active ? "" : "paused"}`}>
       <div className="workflow-card-top">
         <div className="workflow-card-meta">
-          <TriggerBadge trigger={workflow.trigger} />
-          {isTimeBased && <span className="integrations-tag muted" style={{ fontSize: 11 }}>Scheduler needed</span>}
+          <TriggerBadge workflow={workflow} />
         </div>
         <h4 className="workflow-card-name">{workflow.name}</h4>
         <p className="workflow-card-action">
@@ -149,6 +165,7 @@ export default function WorkflowsPage() {
         body: form.body,
         webhook_url: form.webhook_url,
         active: form.active,
+        offset_minutes: form.offset_minutes,
       };
       if (editingId) {
         const updated = await api.updateWorkflow(editingId, payload);
@@ -182,6 +199,7 @@ export default function WorkflowsPage() {
       body: workflow.body || "",
       webhook_url: workflow.webhook_url || "",
       active: workflow.active,
+      offset_minutes: workflow.offset_minutes ?? 1440,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -267,12 +285,20 @@ export default function WorkflowsPage() {
             </label>
 
             {TIME_BASED.has(form.trigger) && (
-              <div className="workflow-notice">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
-                  <circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" />
-                </svg>
-                Time-based triggers (reminders) require a background scheduler. This workflow will be stored but won't fire automatically until a scheduler is configured.
-              </div>
+              <label>
+                How long {form.trigger === "before_event" ? "before" : "after"} the meeting?
+                <select
+                  value={form.offset_minutes}
+                  onChange={(e) => setForm({ ...form, offset_minutes: Number(e.target.value) })}
+                >
+                  {OFFSET_CHOICES.map((choice) => (
+                    <option key={choice.value} value={choice.value}>{choice.label}</option>
+                  ))}
+                </select>
+                <p className="field-hint">
+                  Checked every minute by the reminder scheduler. Each guest receives this once.
+                </p>
+              </label>
             )}
 
             <label>

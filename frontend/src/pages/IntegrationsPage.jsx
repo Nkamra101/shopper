@@ -242,7 +242,7 @@ const WEBHOOK_FORMATS = [
 const ICAL_KEYS = new Set(["apple_calendar"]);
 const OAUTH_KEYS = new Set(["google_calendar", "outlook", "google_meet"]);
 
-function ConnectModal({ integration, onClose, onSave, bookingUsername }) {
+function ConnectModal({ integration, onClose, onSave, calendarFeedUrl }) {
   const isWebhook = WEBHOOK_KEYS.has(integration.key);
   const isVideo = VIDEO_URL_KEYS.has(integration.key);
   const isIcal = ICAL_KEYS.has(integration.key);
@@ -278,7 +278,7 @@ function ConnectModal({ integration, onClose, onSave, bookingUsername }) {
     onClose();
   }
 
-  const icalUrl = bookingUsername ? api.icalUrl(bookingUsername) : null;
+  const icalUrl = calendarFeedUrl || null;
 
   const videoPlaceholders = {
     zoom: "https://zoom.us/j/your-meeting-id",
@@ -449,20 +449,23 @@ export default function IntegrationsPage() {
 
   const [apiSearch, setApiSearch] = useState("");
 
-  // Booking username for iCal URL
-  const [bookingUsername, setBookingUsername] = useState("");
+  // Private iCal feed URL, issued by the API on first request.
+  const [calendarFeedUrl, setCalendarFeedUrl] = useState("");
 
   // Load integrations + API keys + profile on mount
   useEffect(() => {
     async function load() {
       try {
-        const [intList, me] = await Promise.all([api.getIntegrations(), api.getMe()]);
+        const intList = await api.getIntegrations();
         const map = {};
         for (const i of intList) {
           map[i.key] = i;
         }
         setConnections(map);
-        setBookingUsername(me.booking_username || "");
+        // Non-critical: the iCal card stays hidden if this fails.
+        api.getCalendarFeed()
+          .then((feed) => setCalendarFeedUrl(feed.url))
+          .catch(() => setCalendarFeedUrl(""));
 
         // Pre-populate webhook section from generic_webhook integration
         const gw = map["generic_webhook"];
@@ -642,7 +645,7 @@ export default function IntegrationsPage() {
           integration={modal}
           onClose={() => setModal(null)}
           onSave={handleConnectSave}
-          bookingUsername={bookingUsername}
+          calendarFeedUrl={calendarFeedUrl}
         />
       )}
 
@@ -671,11 +674,11 @@ export default function IntegrationsPage() {
       </section>
 
       {/* iCal feed notice */}
-      {bookingUsername && (
+      {calendarFeedUrl && (
         <SectionCard title="iCal feed" subtitle="Subscribe to your confirmed bookings in any calendar app.">
           <div className="booking-url-box" style={{ marginBottom: "var(--space-3)" }}>
-            <code className="booking-url-text">{api.icalUrl(bookingUsername)}</code>
-            <button className="secondary-button" onClick={() => copyValue(api.icalUrl(bookingUsername), "ical")}>
+            <code className="booking-url-text">{calendarFeedUrl}</code>
+            <button className="secondary-button" onClick={() => copyValue(calendarFeedUrl, "ical")}>
               {copiedKey === "ical" ? "Copied!" : "Copy URL"}
             </button>
           </div>

@@ -1,171 +1,240 @@
-# Shopper: Complete System Documentation
+# Shopper
 
-**Shopper** is a full-stack, comprehensive scheduling and booking platform. Designed as a modern alternative to tools like Calendly or Cal.com, it provides a unified interface for professionals to manage their availability, offer public booking pages, and automate the booking lifecycle.
+A scheduling and booking platform in the vein of Calendly or Cal.com. Hosts
+publish booking pages, invitees pick a slot and verify their email, and the
+whole booking lifecycle — confirmation, reminders, reschedules, cancellations —
+runs itself.
 
----
-
-## 1. System Overview
-
-Shopper is split into two primary decoupled applications:
-1. **Frontend (React + Vite)**: A highly interactive Single Page Application (SPA) offering an administrative dashboard and public-facing booking flows.
-2. **Backend (FastAPI + MongoDB)**: A high-performance, asynchronous REST API handling business logic, data persistence, email transactions, and 3rd-party integrations.
-
----
-
-## 2. Core Features & Capabilities
-
-- **Event Type Management**: Create multiple meeting types (e.g., 15m Sync, 45m Interview) with custom durations, unique URL slugs, and specific configurations.
-- **Dynamic Availability**: Define weekly working hours and timezone rules. The system automatically computes available slots dynamically.
-- **Blockouts**: Manually block off specific dates or time ranges where bookings should be restricted.
-- **Public Booking Portal**: A clean, public-facing interface where invitees can select time slots based on the host's real-time availability.
-- **Booking Lifecycle**: Dashboard for hosts to view, reschedule, or cancel upcoming and past bookings.
-- **OTP Verification**: Built-in email One-Time Password (OTP) verification for invitees to prevent spam and verify identity before confirming a booking.
-- **Transactional Emails**: Automated background tasks to send confirmation, rescheduling, and cancellation emails.
-- **Workflows & Automations**: Configure automated reminders and follow-up notifications.
-- **Integrations**: Supports connecting to 3rd-party services (like Google Calendar) via OAuth.
-- **Analytics**: Visual dashboard showing booking performance, conversion metrics, and popular time slots.
+- **Frontend**: React 19 + Vite, deployed on Netlify
+- **Backend**: FastAPI + MongoDB, deployed on Render
+- **Database**: MongoDB Atlas
 
 ---
 
-## 3. System Architecture
+## 1. Features
 
-### Frontend Architecture
-- **Framework**: React 19 + Vite
-- **Routing**: `react-router-dom` (v7) for client-side routing.
-- **State Management**: React Context (`AuthContext` for user state) and local component state.
-- **Styling**: Custom CSS architecture (`index.css`) utilizing CSS variables for robust Dark/Light theme switching.
-- **Structure**: 
-  - `/pages`: Contains all route-level components.
-  - `/components`: Reusable UI elements (Toasts, Navigation, Theme toggles).
-  - `/services`: API wrapper functions handling JWT tokens and requests.
+### For the host
+- **Event types** — multiple meeting templates with their own duration, slug,
+  buffer, minimum notice and booking horizon.
+- **Custom booking questions** — up to ten per event type (short text, long
+  text, dropdown, checkbox, phone), required or optional. Answers are stored
+  with the booking and included in the CSV export and calendar feed.
+- **Availability with multiple windows per day** — a lunch break or split
+  shift is just two windows on the same weekday. Overlaps are rejected.
+- **Date-range blockouts** — block a single day or a holiday spanning weeks.
+- **Bookings** — search, filter by scope (upcoming / past / cancelled), edit
+  notes, reschedule, cancel in bulk, and export the current view to CSV.
+- **Workflows** — automated email or webhook on booking created / cancelled /
+  rescheduled, plus **time-based reminders** ("24 hours before") driven by a
+  background scheduler.
+- **Private calendar feed** — a token-addressed iCal URL to subscribe from
+  Google Calendar, Apple Calendar or Outlook. Rotatable.
+- **Integrations** — Slack, Discord, Teams and generic webhooks.
+- **Analytics** — booking volume, popular slots, conversion.
+- **API keys** — `sk_live_…` bearer tokens for the same endpoints as the UI.
 
-### Backend Architecture
-- **Framework**: FastAPI (Python)
-- **Database**: MongoDB (via `motor` asynchronous driver)
-- **Authentication**: JWT-based authentication combined with Google OAuth capabilities.
-- **Task Queue**: FastAPI's `BackgroundTasks` for asynchronous email delivery to ensure low-latency API responses.
-- **Structure**:
-  - `/app/routers`: Modularized endpoints (`auth`, `bookings`, `event_types`, `public`, `otp`, `integrations`, `workflows`, `calendar`, `availability`, `blockouts`).
-  - `/app/models`: MongoDB schema definitions and Pydantic validation models.
-  - `/app/config.py`: Centralized environment-based configuration.
-  - `/app/seed.py`: Automated database seeding for fresh deployments.
-
----
-
-## 4. Domain Model & Key Entities
-
-- **Users (`users`)**: The hosts using the platform. Contains profile info, timezone preferences, and auth credentials.
-- **Event Types (`event_types`)**: Templates for meetings. Contains title, description, duration (in minutes), and a unique URL `slug`.
-- **Availability (`availability`)**: The weekly schedule template (e.g., Mon-Fri, 9AM-5PM).
-- **Blockouts (`blockouts`)**: Specific date/time exceptions that override standard availability.
-- **Bookings (`bookings`)**: The actual scheduled events. Contains references to the event type, invitee details, start/end times in naive UTC, and current `status` (confirmed, canceled, rescheduled).
-- **Workflows (`workflows`)**: Rules for automated actions (e.g., "Send email 24h before meeting").
-- **Integrations (`integrations`)**: Stored OAuth tokens and metadata for connected services.
+### For the invitee
+- **Public booking page** at `/book/<slug>` with a live calendar; days with no
+  availability are greyed out before they click.
+- **Timezone picker** — slots render in whatever timezone the invitee chooses,
+  defaulting to their browser's. Booking is stored in UTC either way.
+- **Email verification** — a 6-digit OTP before a booking is confirmed.
+- **Self-service management** at `/manage/<token>` — reschedule or cancel from
+  a link in the confirmation email, with no account and no email to the host.
 
 ---
 
-## 5. Core Application Workflows
+## 2. Architecture
 
-### The Booking Flow
-1. **Slot Generation**: When an invitee visits a public booking page (`/book/:slug`), the frontend requests available slots for a specific month/date. The backend calculates slots by overlaying the `event_types` duration onto the host's `availability`, subtracting existing `bookings` and `blockouts`, and converting everything relative to the host's timezone.
-2. **OTP Request**: Before finalizing the booking, the invitee submits their email. The backend generates a 6-digit OTP, saves it with a TTL (Time-To-Live) in the database, and emails it asynchronously via SMTP.
-3. **OTP Verification**: Invitee enters the OTP. If valid, the backend issues a short-lived `verification_token`.
-4. **Confirmation**: The frontend submits the final booking payload alongside the `verification_token`. A `booking` record is created, and confirmation emails are dispatched to both the host and the invitee.
+### Multi-tenancy
+Every account is a tenant. `event_types`, `availability_settings`,
+`availability_rules`, `blockout_dates`, `bookings`, `workflows` and
+`integrations` all carry an `owner_id`, and every admin endpoint is scoped to
+the authenticated user. Requests for another tenant's document return 404
+rather than 403, so ids can't be probed.
 
-### Authentication Flow
-- **Standard Login**: Email/password exchange for a JWT access token.
-- **Google OAuth**: Users can sign in via Google. The backend handles the OAuth callback, provisions a user account if necessary, and issues a JWT.
+Event-type slugs are **globally** unique, which keeps public links at
+`/book/<slug>` without a username segment.
 
----
+### Authentication
+- `POST /api/auth/login` issues a JWT (HS256).
+- API keys (`sk_live_…`) are accepted on the same `Authorization: Bearer`
+  header; only a SHA-256 hash is stored.
+- `app/security.py` is the single source of truth — routers depend on
+  `require_user` / `require_owner_id` rather than parsing headers themselves.
 
-## 6. Directory Map (Frontend Pages)
+### Datetime convention
+MongoDB stores **naive UTC**. The host's timezone (from their availability
+settings) is what working hours are interpreted in. Slots are returned with an
+unambiguous `start_utc` so the browser can render them in any timezone, and
+bookings are normalised back to UTC on the way in.
 
-| Page Component | Route | Description |
-| :--- | :--- | :--- |
-| `LandingPage` | `/` | Marketing/Splash page for unauthenticated users. |
-| `LoginPage` | `/login` | Email/Password and OAuth login interface. |
-| `DashboardPage` | `/dashboard` | Main admin view; lists and manages Event Types. |
-| `AvailabilityPage` | `/availability` | Interactive weekly schedule configuration. |
-| `BookingsPage` | `/bookings` | Timeline of upcoming, past, and canceled meetings. |
-| `AnalyticsPage` | `/analytics` | Charts and data insights on booking frequency. |
-| `IntegrationsPage` | `/integrations` | UI for connecting 3rd-party calendars and tools. |
-| `WorkflowsPage` | `/workflows` | Manage automated reminders and notifications. |
-| `ProfilePage` | `/profile` | User settings, branding, and account management. |
-| `PublicBookingPage` | `/book/:slug` | The public-facing interface where invitees pick slots. |
-| `ConfirmationPage`| `/book/:slug/confirmed/:id`| Success screen after a booking is finalized. |
+### Reminder scheduler
+`app/services/scheduler.py` polls every 60 seconds for bookings entering a
+workflow's reminder window. Delivery is at-most-once per (booking, workflow),
+enforced by a unique index on `reminder_log` — the insert *is* the lock, so
+overlapping polls or a second instance cannot double-send. Catch-up is bounded
+to two hours so a service that was asleep doesn't flood old reminders.
 
----
-
-## 7. Setup & Configuration
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- MongoDB (Local instance or MongoDB Atlas cluster)
-
-### Environment Variables (Backend)
-Create a `.env` file in the `backend/` directory:
-
-```ini
-APP_ENV=development
-DEBUG=true
-MONGODB_URI=mongodb://localhost:27017
-CORS_ORIGINS=http://localhost:5173
-DEFAULT_TIMEZONE=Asia/Kolkata
-SEED_ON_STARTUP=true
-
-# Email Settings (Required for OTP & Notifications)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-SMTP_FROM_NAME="Shopper Scheduler"
-
-# JWT Authentication
-SECRET_KEY=generate_a_secure_random_string
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-
-# Google OAuth (Optional)
-GOOGLE_CLIENT_ID=your_client_id
-GOOGLE_CLIENT_SECRET=your_client_secret
-FRONTEND_URL=http://localhost:5173
+### Layout
+```
+backend/app/
+  main.py           app wiring, CORS, security headers, lifespan
+  config.py         env-driven settings + production validation
+  security.py       password hashing, JWT, auth dependencies
+  database.py       Mongo client and index management
+  migrations.py     idempotent startup migrations
+  serializers.py    document -> API shape helpers
+  schemas.py        Pydantic request/response models
+  routers/          auth, event_types, availability, bookings, blockouts,
+                    public, otp, integrations, calendar, workflows
+  services/         booking_service (slots), email, otp, webhooks,
+                    workflows, scheduler, rate_limit
+  scripts/          smoke_test.py
+frontend/src/
+  pages/            route-level components
+  components/       Toast, Skeleton, ThemeToggle, AuthContext…
+  services/api.js   API client
+  utils/date.js     timezone-aware formatting
+  index.css         design tokens + component styles
 ```
 
-### Running Locally
+---
 
-**Terminal 1 (Backend):**
+## 3. Running locally
+
+**Prerequisites**: Python 3.11+, Node 18+, MongoDB (local or Atlas).
+
+**Backend**
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate on Windows
+.venv/Scripts/activate        # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env          # then edit
 uvicorn app.main:app --reload
 ```
 
-**Terminal 2 (Frontend):**
+**Frontend**
 ```bash
 cd frontend
 npm install
-# Ensure .env contains VITE_API_URL=http://127.0.0.1:8000
+cp .env.example .env          # VITE_API_URL=http://127.0.0.1:8000
 npm run dev
 ```
 
+Leave `SMTP_*` blank in development: emails are written to the server log, and
+the booking OTP is shown in the UI so you can complete a booking end to end.
+
+Interactive API docs are at `/docs` — disabled automatically in production.
+
 ---
 
-## 8. Deployment Strategy
+## 4. Tests
 
-### Database
-Provision a **MongoDB Atlas M0 Free Cluster**. Ensure the Network Access IP whitelist is set to `0.0.0.0/0` if deploying on dynamic platforms like Koyeb or Render.
+```bash
+docker run -d -p 27099:27017 --name shopper-test-mongo mongo:7
+cd backend && python scripts/smoke_test.py
+```
 
-### Backend (Koyeb / Render / Railway)
-The backend is stateless (aside from the DB) and can be deployed easily via Docker or Native Python environments.
-- **Build Command**: `pip install -r requirements.txt`
-- **Run Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- **Secrets**: Provide `MONGODB_URI`, `SECRET_KEY`, and `SMTP_*` variables in the deployment dashboard.
+82 checks covering tenant isolation, auth enforcement, slot generation with
+lunch breaks, the OTP and booking flow, custom questions, invitee
+reschedule/cancel, blockouts, CSV export, the reminder scheduler and the iCal
+feed. It drops its target database on every run, so never point
+`SMOKE_MONGODB_URI` at real data.
 
-### Frontend (Vercel / Netlify)
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-- **Variables**: Set `VITE_API_URL` to the public URL of your deployed backend.
+---
 
-*Note: After deploying the frontend, make sure to add the frontend's public URL to the backend's `CORS_ORIGINS` variable.*
+## 5. Deployment
+
+### 5.1 Database — MongoDB Atlas
+1. Create a free **M0** cluster.
+2. Database Access → add a user with *Read and write to any database*.
+3. Network Access → allow `0.0.0.0/0` (Render's egress IPs are dynamic).
+4. Copy the `mongodb+srv://…` connection string.
+
+### 5.2 Backend — Render
+Deploy from `backend/render.yaml`, then fill in the secrets marked
+`sync: false` in the dashboard:
+
+| Variable | Value |
+| :-- | :-- |
+| `MONGODB_URI` | the Atlas connection string |
+| `SECRET_KEY` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | Gmail address + **App Password** |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional |
+
+Then set these to your real URLs (no trailing slash):
+`FRONTEND_URL`, `API_PUBLIC_URL`, `CORS_ORIGINS`.
+
+The app **refuses to start in production** if `SECRET_KEY` is missing, default
+or under 32 characters, if `MONGODB_URI` points at localhost, or if
+`CORS_ORIGINS` is empty or `*`. A boot failure here is the app telling you a
+secret is missing — check the logs rather than relaxing the check.
+
+### 5.3 Frontend — Netlify
+`netlify.toml` is committed, so Netlify picks up base, build command, publish
+directory and the SPA redirect automatically. Set one environment variable:
+
+```
+VITE_API_URL = https://<your-backend>.onrender.com
+```
+
+Vite inlines this at build time, so **changing it requires a redeploy**, not
+just a restart.
+
+### 5.4 Keeping the free backend awake
+Render's free tier suspends a service after ~15 minutes idle, and waking it
+costs the next visitor ~50 seconds. `.github/workflows/keep-alive.yml` pings
+`/health` every 14 minutes to prevent that.
+
+The free tier allows 750 instance-hours per month against a ~730-hour month,
+so one always-on service fits — but there is no room for a second free service
+in the same account. Set the repo variable `BACKEND_URL` if your URL differs.
+GitHub disables scheduled workflows on repositories with no activity for 60
+days; if cold starts return, check the workflow is still enabled.
+
+### 5.5 First deploy checklist
+1. Register the first account immediately — on a database that already holds
+   data, the oldest account inherits it.
+2. Set a booking username in **Profile**.
+3. Set availability, then create an event type.
+4. Open `/book/<slug>` in a private window and book a slot to confirm SMTP
+   works end to end.
+5. Check the confirmation email contains a working reschedule/cancel link —
+   if the link points at `localhost`, `FRONTEND_URL` is wrong.
+
+---
+
+## 6. Upgrading an existing deployment
+
+`app/migrations.py` runs automatically at startup and is idempotent:
+
+- assigns pre-existing global data to the oldest account
+- renames `integrations.user_id` → `owner_id`
+- converts single-day blockouts to date ranges
+- backfills `manage_token` on existing bookings so old bookings get
+  self-service links
+- clears blank `booking_username` values that would collide under the new
+  unique index
+- drops the legacy indexes that conflict with per-tenant uniqueness
+
+Take an Atlas snapshot before the first deploy of this version. Set
+`RUN_MIGRATIONS_ON_STARTUP=false` afterwards if you prefer to run them
+deliberately.
+
+---
+
+## 7. Security notes
+
+- All admin endpoints require a bearer token; there are no unauthenticated
+  reads of booking data.
+- CORS is restricted to `CORS_ORIGINS`; credentials are not accepted, since
+  auth travels in the `Authorization` header.
+- Public booking, reschedule, OTP request/verify, login and registration are
+  rate limited per IP, backed by Mongo with a TTL index.
+- The iCal feed is addressed by an unguessable rotatable token and returns
+  only that host's bookings.
+- Invitee manage links are unguessable per-booking tokens that grant nothing
+  beyond viewing, rescheduling or cancelling that one booking.
+- `/docs` and `/openapi.json` are disabled when `APP_ENV=production`.

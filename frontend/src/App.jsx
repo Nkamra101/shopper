@@ -8,6 +8,7 @@ import IntegrationsPage from "./pages/IntegrationsPage";
 import ProfilePage from "./pages/ProfilePage";
 import PublicBookingPage from "./pages/PublicBookingPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
+import ManageBookingPage from "./pages/ManageBookingPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import WorkflowsPage from "./pages/WorkflowsPage";
 import LandingPage from "./pages/LandingPage";
@@ -237,6 +238,7 @@ export default function App() {
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route path="/book/:slug" element={<PublicBookingPage />} />
       <Route path="/book/:slug/confirmed/:bookingId" element={<ConfirmationPage />} />
+      <Route path="/manage/:token" element={<ManageBookingPage />} />
       <Route path="/dashboard" element={<ProtectedRoute><AdminLayout title="Event Types" subtitle="Scheduling dashboard"><DashboardPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/availability" element={<ProtectedRoute><AdminLayout title="Availability" subtitle="Weekly schedule"><AvailabilityPage /></AdminLayout></ProtectedRoute>} />
       <Route path="/bookings" element={<ProtectedRoute><AdminLayout title="Bookings" subtitle="Portal and meeting timeline"><BookingsPage /></AdminLayout></ProtectedRoute>} />

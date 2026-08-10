@@ -1,8 +1,9 @@
-databases:
-  - name: shopper-db
-    plan: free
-    databaseName: shopper_prod
-    user: shopper_admin
+# Render blueprint for the Shopper API.
+#
+# The database is MongoDB Atlas, not a Render-managed Postgres instance, so
+# there is deliberately no `databases:` block here — provide MONGODB_URI as a
+# secret instead. Values marked `sync: false` must be filled in from the
+# Render dashboard (Environment tab) and are never committed.
 
 services:
   - type: web
@@ -14,20 +15,60 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+
       - key: APP_ENV
         value: production
+      - key: APP_NAME
+        value: Shopper API
       - key: DEBUG
         value: "false"
       - key: SEED_ON_STARTUP
         value: "false"
+      - key: RUN_MIGRATIONS_ON_STARTUP
+        value: "true"
       - key: DEFAULT_TIMEZONE
         value: Asia/Kolkata
-      - key: DATABASE_URL
-        fromDatabase:
-          name: shopper-db
-          property: connectionString
+
+      # ----- MongoDB Atlas -----
+      # mongodb+srv://<user>:<password>@<cluster>/?retryWrites=true&w=majority
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB_NAME
+        value: shopper_prod
+
+      # ----- Public URLs -----
+      # FRONTEND_URL builds the invitee reschedule/cancel links that go out in
+      # emails; API_PUBLIC_URL builds the iCal subscription URL. Both must be
+      # the real public origins, with no trailing slash.
+      - key: FRONTEND_URL
+        value: https://shoppernk.netlify.app
+      - key: API_PUBLIC_URL
+        value: https://shopper-backend-2n4n.onrender.com
       - key: CORS_ORIGINS
-        value: "https://shoppernk.netlify.app"
+        value: https://shoppernk.netlify.app
+
+      # ----- Auth -----
+      # Generate once and paste into the dashboard:
+      #   python -c "import secrets; print(secrets.token_urlsafe(48))"
+      # Startup refuses to boot in production if this is missing or short.
+      - key: SECRET_KEY
+        sync: false
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: ALLOW_REGISTRATION
+        value: "true"
+
+      # ----- Google OAuth (optional; leave unset to hide the button) -----
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://shopper-backend-2n4n.onrender.com/api/auth/google/callback
+
+      # ----- SMTP (required for OTP and notification email) -----
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -39,11 +80,19 @@ services:
       - key: SMTP_FROM
         sync: false
       - key: SMTP_FROM_NAME
-        value: Shopper Scheduler
+        value: Shopper
       - key: SMTP_TIMEOUT_SECONDS
         value: "10"
       - key: SMTP_RETRY_COUNT
         value: "1"
+
+      # ----- Reminder scheduler -----
+      - key: REMINDER_SCHEDULER_ENABLED
+        value: "true"
+      - key: REMINDER_POLL_SECONDS
+        value: "60"
+
+      # ----- OTP / rate limits -----
       - key: OTP_TTL_SECONDS
         value: "600"
       - key: OTP_RATE_LIMIT_SECONDS
@@ -52,3 +101,17 @@ services:
         value: "5"
       - key: VERIFICATION_TOKEN_TTL_SECONDS
         value: "900"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: RATE_LIMIT_LOGIN
+        value: "10"
+      - key: RATE_LIMIT_LOGIN_WINDOW
+        value: "300"
+      - key: RATE_LIMIT_BOOKING
+        value: "10"
+      - key: RATE_LIMIT_BOOKING_WINDOW
+        value: "3600"
+      - key: RATE_LIMIT_OTP
+        value: "8"
+      - key: RATE_LIMIT_OTP_WINDOW
+        value: "3600"

@@ -10,21 +10,47 @@ const emptyForm = {
   description: "",
   duration: 30,
   url_slug: "",
-  accent_color: "#6366f1",
+  accent_color: "#18181b",
   is_active: true,
   buffer_minutes: 0,
   min_notice_hours: 0,
   max_advance_days: 60,
   location: "",
   location_type: "video",
+  questions: [],
 };
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PREDEFINED_COLORS = [
-  "#6366f1", "#8b5cf6", "#ec4899", "#ef4444",
-  "#f97316", "#f59e0b", "#10b981", "#3b82f6", "#0f172a", "#64748b",
+  "#18181b", "#64748b", "#6366f1", "#8b5cf6",
+  "#ec4899", "#ef4444", "#f97316", "#f59e0b", "#10b981", "#3b82f6",
 ];
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+
+const QUESTION_TYPES = [
+  { value: "text", label: "Short text" },
+  { value: "textarea", label: "Long text" },
+  { value: "select", label: "Dropdown" },
+  { value: "checkbox", label: "Checkbox" },
+  { value: "phone", label: "Phone" },
+];
+
+/** Stable, readable id derived from the label, unique within the event type. */
+function questionId(label, taken) {
+  const base = label
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .slice(0, 30) || "question";
+  let candidate = base;
+  let counter = 2;
+  while (taken.includes(candidate)) {
+    candidate = `${base}_${counter}`;
+    counter += 1;
+  }
+  return candidate;
+}
 
 function sanitizeSlug(value) {
   return value
@@ -393,18 +419,84 @@ export default function DashboardPage() {
     setForm((current) => ({ ...current, url_slug: sanitizeSlug(value) }));
   }
 
+  function addQuestion() {
+    setForm((current) => ({
+      ...current,
+      questions: [
+        ...current.questions,
+        {
+          id: questionId("question", current.questions.map((q) => q.id)),
+          label: "",
+          type: "text",
+          required: false,
+          placeholder: "",
+          options: [],
+        },
+      ],
+    }));
+  }
+
+  function updateQuestion(index, changes) {
+    setForm((current) => ({
+      ...current,
+      questions: current.questions.map((question, questionIndex) =>
+        questionIndex === index ? { ...question, ...changes } : question
+      ),
+    }));
+  }
+
+  function removeQuestion(index) {
+    setForm((current) => ({
+      ...current,
+      questions: current.questions.filter((_, questionIndex) => questionIndex !== index),
+    }));
+  }
+
+  /**
+   * Drop blank questions and give each a readable id before saving. Ids are
+   * only regenerated for new questions — changing an existing one would
+   * orphan the answers already stored against it.
+   */
+  function prepareQuestions(questions) {
+    const taken = [];
+    return questions
+      .filter((question) => question.label.trim())
+      .map((question) => {
+        const isNew = !question.id || question.id.startsWith("question");
+        const id = isNew ? questionId(question.label, taken) : question.id;
+        taken.push(id);
+        return {
+          id,
+          label: question.label.trim(),
+          type: question.type,
+          required: Boolean(question.required),
+          placeholder: (question.placeholder || "").trim(),
+          options: question.type === "select" ? question.options || [] : [],
+        };
+      });
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     setTouched({ title: true, url_slug: true, duration: true });
     if (!isValid) return;
 
+    const payload = { ...form, questions: prepareQuestions(form.questions) };
+    const invalidSelect = payload.questions.find(
+      (question) => question.type === "select" && question.options.length === 0
+    );
+    if (invalidSelect) {
+      toast.error(`"${invalidSelect.label}" is a dropdown, so it needs at least one option.`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (editingId) {
-        await api.updateEventType(editingId, form);
+        await api.updateEventType(editingId, payload);
         toast.success("Event type updated.");
       } else {
-        await api.createEventType(form);
+        await api.createEventType(payload);
         toast.success("Event type created.");
       }
       resetEditor();
@@ -430,6 +522,7 @@ export default function DashboardPage() {
       max_advance_days: item.max_advance_days ?? 60,
       location: item.location ?? "",
       location_type: item.location_type ?? "video",
+      questions: item.questions ?? [],
     });
     setTouched({});
     setShowAdvanced(false);
@@ -803,6 +896,101 @@ export default function DashboardPage() {
                   </div>
                   <p className="field-hint">Keep your schedule open only as far ahead as you want to plan.</p>
                 </label>
+
+                <div className="full-width">
+                  <div className="section-header" style={{ marginBottom: "var(--space-3)", paddingBottom: "var(--space-2)" }}>
+                    <h4>Booking questions</h4>
+                    <p>Ask guests for what you need up front. Answers arrive with the booking.</p>
+                  </div>
+
+                  <div className="question-editor">
+                    {form.questions.length === 0 ? (
+                      <div className="question-empty">No extra questions. Guests just give a name and email.</div>
+                    ) : (
+                      form.questions.map((question, index) => (
+                        <div className="question-row" key={question.id}>
+                          <div className="question-row-top">
+                            <input
+                              value={question.label}
+                              placeholder="What should we cover?"
+                              onChange={(event) => updateQuestion(index, { label: event.target.value })}
+                            />
+                            <button
+                              type="button"
+                              className="icon-button danger"
+                              onClick={() => removeQuestion(index)}
+                              aria-label={`Remove question ${question.label || index + 1}`}
+                              title="Remove question"
+                            >
+                              ×
+                            </button>
+                          </div>
+
+                          <div className="question-row-meta">
+                            <select
+                              value={question.type}
+                              onChange={(event) => updateQuestion(index, { type: event.target.value })}
+                            >
+                              {QUESTION_TYPES.map((type) => (
+                                <option key={type.value} value={type.value}>{type.label}</option>
+                              ))}
+                            </select>
+
+                            <label className="question-required-toggle">
+                              <input
+                                type="checkbox"
+                                checked={question.required}
+                                onChange={(event) => updateQuestion(index, { required: event.target.checked })}
+                              />
+                              Required
+                            </label>
+                          </div>
+
+                          {question.type === "select" ? (
+                            <label>
+                              Options <span className="field-hint-inline">comma separated</span>
+                              <input
+                                value={(question.options || []).join(", ")}
+                                placeholder="1-10, 11-50, 51+"
+                                onChange={(event) =>
+                                  updateQuestion(index, {
+                                    options: event.target.value
+                                      .split(",")
+                                      .map((option) => option.trim())
+                                      .filter(Boolean),
+                                  })
+                                }
+                              />
+                            </label>
+                          ) : (
+                            <label>
+                              Placeholder <span className="field-hint-inline">optional</span>
+                              <input
+                                value={question.placeholder || ""}
+                                placeholder="Shown as grey hint text"
+                                onChange={(event) => updateQuestion(index, { placeholder: event.target.value })}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      ))
+                    )}
+
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={addQuestion}
+                        disabled={form.questions.length >= 10}
+                      >
+                        + Add question
+                      </button>
+                      {form.questions.length >= 10 ? (
+                        <span className="field-hint">Ten questions is the maximum.</span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>

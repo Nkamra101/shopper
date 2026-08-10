@@ -44,6 +44,10 @@ export default function ConfirmationPage() {
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  // Stashed by the booking page on success. It is intentionally not fetchable
+  // by booking id — only the guest who just booked (or holds the emailed
+  // link) can reach the manage page.
+  const manageToken = sessionStorage.getItem(`shopper_manage_${bookingId}`) || "";
 
   useEffect(() => {
     async function loadBooking() {
@@ -146,6 +150,14 @@ export default function ConfirmationPage() {
                   </button>
                 </div>
               </div>
+
+              {manageToken ? (
+                <p className="confirmation-manage-note">
+                  Need to change plans?{" "}
+                  <Link to={`/manage/${manageToken}`}>Reschedule or cancel</Link> — the same link is
+                  in your confirmation email.
+                </p>
+              ) : null}
             </>
           ) : (
             <p style={{ color: "var(--text-muted)" }}>Booking details could not be loaded.</p>

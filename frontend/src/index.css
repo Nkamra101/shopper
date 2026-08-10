@@ -4592,3 +4592,1139 @@ select:focus {
   }
 }
 
+
+/* ============================================================
+   MINIMAL REFINEMENT LAYER
+
+   Loaded last so it settles the visual language on top of the
+   older page-specific rules. The rules here are deliberately
+   about *restraint*: hairline borders instead of shadows, one
+   ink accent instead of a palette, a tight type scale, and no
+   motion that moves layout.
+   ============================================================ */
+
+/* ---------------------------------------------------------- type -- */
+
+body {
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.25;
+}
+
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.375rem; }
+h3 { font-size: 1.0625rem; }
+h4 { font-size: 0.9375rem; }
+
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+code, pre, .code-block, .mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+/* Nothing in a minimal UI needs to shout. */
+strong, b { font-weight: 600; }
+
+/* ------------------------------------------------------- surfaces -- */
+
+.section-card,
+.stat-card,
+.event-card,
+.booking-card,
+.workflow-card,
+.timeline-card,
+.analytics-kpi-card,
+.analytics-hero-card,
+.availability-hero-card,
+.workflows-stat-card,
+.profile-preview-card,
+.profile-preview-card-rich,
+.integrations-api-card,
+.tutorial-tip-card,
+.tutorial-faq-card,
+.public-help-card,
+.booking-review-card,
+.manage-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+
+.section-card { padding: var(--space-6); }
+
+.section-header {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.section-header h3 { margin-bottom: 2px; }
+.section-header p { color: var(--text-muted); font-size: 0.8125rem; }
+
+/* Hero blocks read as quiet headers, not banners. */
+.availability-hero,
+.workflows-hero,
+.analytics-hero,
+.profile-hero-card,
+.tutorial-hero-card {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+  padding: var(--space-6);
+}
+
+.availability-hero h3,
+.workflows-hero h3 { margin: 4px 0 6px; }
+.availability-hero p,
+.workflows-hero p { color: var(--text-muted); font-size: 0.8125rem; max-width: 56ch; }
+
+.availability-hero-card,
+.workflows-stat-card,
+.analytics-kpi-card {
+  padding: var(--space-4);
+  background: var(--surface);
+}
+
+.availability-hero-card span,
+.workflows-stat-card span {
+  display: block;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  margin-bottom: 4px;
+}
+
+.availability-hero-card strong,
+.workflows-stat-card strong {
+  font-size: 1.375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------- buttons -- */
+
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button,
+.cancel-button,
+.edit-button,
+.reschedule-button,
+.copy-button,
+.cal-button,
+.preset-chip,
+.step-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  /* No transform on hover: moving controls feel cheap and cause reflow. */
+  transform: none;
+  box-shadow: none;
+}
+
+.primary-button {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+.primary-button:hover:not(:disabled) { background: var(--accent-2); border-color: var(--accent-2); }
+
+.secondary-button,
+.edit-button,
+.reschedule-button,
+.copy-button,
+.cal-button,
+.step-back-btn {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.secondary-button:hover:not(:disabled),
+.edit-button:hover:not(:disabled),
+.reschedule-button:hover:not(:disabled),
+.copy-button:hover:not(:disabled),
+.cal-button:hover:not(:disabled),
+.step-back-btn:hover:not(:disabled) { background: var(--surface-muted); }
+
+.ghost-button {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: transparent;
+}
+.ghost-button:hover:not(:disabled) { background: var(--surface-muted); color: var(--text); }
+
+.danger-button,
+.cancel-button {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--border-strong);
+}
+.danger-button:hover:not(:disabled),
+.cancel-button:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger); }
+
+.ghost-button.danger { color: var(--danger); }
+.ghost-button.danger:hover:not(:disabled) { background: var(--danger-bg); }
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.ghost-button:disabled,
+.danger-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border-strong);
+}
+.link-button:hover { color: var(--text); text-decoration-color: currentColor; }
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px; height: 30px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: background-color 120ms ease, color 120ms ease;
+  box-shadow: none;
+  transform: none;
+}
+.icon-button:hover { background: var(--surface-muted); color: var(--text); }
+.icon-button.danger:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+
+.preset-chip {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.preset-chip:hover { background: var(--surface-muted); color: var(--text); border-color: var(--border-strong); }
+
+/* ---------------------------------------------------------- forms -- */
+
+label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+input[type="text"], input[type="email"], input[type="password"],
+input[type="date"], input[type="time"], input[type="number"],
+input[type="url"], input[type="tel"], input:not([type]),
+select, textarea {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+  transition: border-color 120ms ease;
+  box-shadow: none;
+}
+
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) {
+  border-color: var(--text-subtle);
+}
+
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  border-color: var(--text);
+  box-shadow: none;
+  outline: 1px solid var(--text);
+  outline-offset: -1px;
+}
+
+input:disabled, select:disabled, textarea:disabled {
+  background: var(--surface-muted);
+  color: var(--text-subtle);
+  cursor: not-allowed;
+}
+
+input[type="checkbox"], input[type="radio"] {
+  width: 15px; height: 15px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+textarea { resize: vertical; min-height: 72px; line-height: 1.55; }
+
+::placeholder { color: var(--text-subtle); }
+
+.field-error { color: var(--danger); font-size: 0.75rem; margin-top: 5px; font-weight: 400; }
+.field-hint  { color: var(--text-subtle); font-size: 0.75rem; margin-top: 5px; font-weight: 400; }
+.field-hint-inline { color: var(--text-subtle); font-weight: 400; font-size: 0.75rem; }
+.required-mark { color: var(--danger); }
+
+.form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
+.form-grid .full-width { grid-column: 1 / -1; }
+
+/* ---------------------------------------------------- pills/badges -- */
+
+.status-pill, .slug-chip, .event-meta-chip, .public-meta-chip,
+.workflow-trigger-badge, .analytics-range-pill, .header-pill,
+.tutorial-step-chip, .profile-link-chip, .event-inactive-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+
+.status-pill.confirmed { color: var(--success); background: var(--success-bg); border-color: transparent; }
+.status-pill.cancelled { color: var(--danger);  background: var(--danger-bg);  border-color: transparent; }
+.status-pill.past      { color: var(--text-subtle); }
+
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------- app shell -- */
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: none;
+  padding: var(--space-5) var(--space-3);
+}
+
+.brand-block { padding: 0 var(--space-2) var(--space-5); }
+.brand-logo {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  box-shadow: none;
+}
+.brand-logo svg { stroke: var(--accent-contrast); }
+.brand-name { font-size: 0.9375rem; font-weight: 600; }
+.brand-tagline { font-size: 0.6875rem; color: var(--text-subtle); }
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 var(--space-2);
+  margin-bottom: 1px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+  transform: none;
+  box-shadow: none;
+}
+.nav-link:hover { background: var(--surface-muted); color: var(--text); }
+.nav-link.active { background: var(--surface-muted); color: var(--text); font-weight: 600; }
+.nav-link.active::before, .nav-link::before { display: none; }
+.nav-icon { display: grid; place-items: center; opacity: 0.75; }
+.nav-link.active .nav-icon { opacity: 1; }
+
+.nav-divider { height: 1px; background: var(--border); margin: var(--space-3) var(--space-2); border: none; }
+
+.sidebar-user {
+  display: flex; align-items: center; gap: 9px;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-2);
+  border-top: 1px solid var(--border);
+  background: transparent;
+  border-radius: 0;
+}
+.sidebar-user-avatar {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.6875rem; font-weight: 600;
+}
+.sidebar-user-name  { font-size: 0.8125rem; font-weight: 500; }
+.sidebar-user-email { font-size: 0.6875rem; color: var(--text-subtle); }
+
+.sidebar-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-2);
+}
+.sidebar-footer-label { font-size: 0.6875rem; color: var(--text-subtle); }
+
+.page-header {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: none;
+}
+.page-header h2 { font-size: 1.25rem; }
+.page-content { padding: var(--space-6); }
+.page-area { background: var(--bg); }
+
+/* ---------------------------------------------------- public pages -- */
+
+.public-page { background: var(--bg); }
+.public-topbar {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.public-brand { font-weight: 600; font-size: 0.9375rem; gap: 7px; }
+
+.public-layout {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: none;
+  /* width:auto (not 100%) so the horizontal margins don't push the grid
+     past the viewport and force the page to scroll sideways. */
+  width: auto;
+  max-width: 1000px;
+  margin: var(--space-8);
+  padding: 0;
+  gap: 0;
+}
+
+@media (min-width: 1064px) {
+  .public-layout { margin: var(--space-8) auto; }
+}
+
+.public-info-panel {
+  padding: var(--space-8);
+  border-right: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+.public-booking-panel { padding: var(--space-8); background: var(--surface); }
+
+.public-event-badge { width: 28px; height: 3px; border-radius: 2px; margin-bottom: var(--space-4); }
+.public-host-name { font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 4px; }
+.public-event-title { font-size: 1.375rem; margin-bottom: var(--space-2); }
+.public-event-desc { color: var(--text-muted); font-size: 0.8125rem; margin-bottom: var(--space-4); }
+.public-meta-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-5); }
+
+.public-help-card { padding: var(--space-4); border-radius: var(--radius-md); background: var(--surface); }
+.public-help-card strong { display: block; font-size: 0.8125rem; margin-bottom: 4px; }
+.public-help-card p { color: var(--text-muted); font-size: 0.75rem; line-height: 1.6; }
+
+.booking-summary-preview {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+/* ------------------------------------------------ step indicator -- */
+
+.step-indicator {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.step-item { display: flex; align-items: center; gap: 7px; }
+.step-dot {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-subtle);
+  font-size: 0.6875rem; font-weight: 600;
+  box-shadow: none;
+}
+.step-item.active .step-dot { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.step-item.done   .step-dot { background: var(--surface-muted); border-color: var(--border-strong); color: var(--text); }
+.step-label { font-size: 0.75rem; color: var(--text-subtle); }
+.step-item.active .step-label { color: var(--text); font-weight: 500; }
+.step-line { width: 20px; height: 1px; background: var(--border); margin: 0 2px; }
+
+.step-heading { font-size: 0.9375rem; margin-bottom: var(--space-4); }
+.step-heading-row {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--space-4); flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.step-heading-row .step-heading { margin-bottom: 0; }
+.step-actions { display: flex; gap: var(--space-2); margin-top: var(--space-5); }
+.step-back-btn { margin-bottom: var(--space-4); height: 28px; padding: 0 10px; font-size: 0.75rem; }
+
+/* -------------------------------------------------- timezone select -- */
+
+.tz-select { display: flex; align-items: center; gap: 7px; font-weight: 400; }
+.tz-select-label { font-size: 0.75rem; color: var(--text-subtle); white-space: nowrap; }
+.tz-select select {
+  margin-top: 0;
+  width: auto;
+  min-width: 170px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+}
+
+/* ------------------------------------------------------- calendar -- */
+
+.calendar-grid-widget {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--surface);
+  box-shadow: none;
+}
+.calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.cal-month-label { font-size: 0.8125rem; font-weight: 600; }
+.cal-nav-btn {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: none; transform: none;
+}
+.cal-nav-btn:hover { background: var(--surface-muted); color: var(--text); }
+
+.calendar-weekdays, .calendar-cells { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-weekday {
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  padding-bottom: 5px;
+}
+.calendar-cells.is-loading { opacity: 0.55; }
+
+.cal-day {
+  aspect-ratio: 1;
+  display: grid; place-items: center;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+  box-shadow: none; transform: none;
+}
+.cal-day:hover:not(:disabled) { background: var(--surface-muted); }
+.cal-day.today { border-color: var(--border-strong); font-weight: 600; }
+.cal-day.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.cal-day.past, .cal-day:disabled { color: var(--text-subtle); opacity: 0.4; cursor: not-allowed; }
+.cal-day.unavailable { color: var(--text-subtle); opacity: 0.3; text-decoration: line-through; }
+
+/* ---------------------------------------------------------- slots -- */
+
+.slots-section { margin-top: var(--space-5); }
+.slots-heading { font-size: 0.8125rem; font-weight: 600; margin-bottom: var(--space-3); }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+
+.slot-button {
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  box-shadow: none; transform: none;
+}
+.slot-button:hover { border-color: var(--text); }
+.slot-button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); font-weight: 500; }
+
+.slots-empty {
+  padding: var(--space-6);
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-subtle);
+  font-size: 0.8125rem;
+}
+
+/* --------------------------------------------------- review card -- */
+
+.booking-review-card { padding: var(--space-5); }
+.review-row { padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
+.review-row:last-child { border-bottom: none; padding-bottom: 0; }
+.review-row:first-child { padding-top: 0; }
+.review-label {
+  font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-subtle); margin-bottom: 3px;
+}
+.review-value { font-size: 0.875rem; font-weight: 500; }
+.review-sub { font-size: 0.75rem; color: var(--text-subtle); margin-top: 2px; }
+
+/* ------------------------------------------------- OTP verification -- */
+
+.otp-email-row, .otp-code-row { display: flex; gap: var(--space-2); align-items: flex-start; margin-top: 6px; }
+.otp-email-row input, .otp-code-row input { margin-top: 0; }
+.otp-email-row .secondary-button, .otp-email-row .ghost-button, .otp-code-row .primary-button { flex-shrink: 0; }
+.otp-code-input { max-width: 140px; font-family: var(--font-mono); letter-spacing: 0.28em; text-align: center; }
+.otp-resend { margin-top: 7px; font-size: 0.75rem; color: var(--text-subtle); }
+.otp-success { margin-top: 6px; font-size: 0.75rem; color: var(--success); font-weight: 500; }
+.otp-dev-hint {
+  margin-top: 7px; padding: 7px 10px;
+  border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+/* --------------------------------------- availability day editor -- */
+
+.availability-days { display: flex; flex-direction: column; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.availability-day { background: var(--surface); padding: var(--space-4); }
+.availability-day.inactive { background: var(--surface-muted); }
+
+.availability-day-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.availability-day-toggle { display: flex; align-items: center; gap: 9px; margin: 0; cursor: pointer; }
+.availability-day-toggle .day-name { display: none; }
+.availability-day-toggle .day-name-full { font-size: 0.8125rem; font-weight: 500; min-width: 88px; }
+.availability-day-tools { display: flex; align-items: center; gap: var(--space-4); }
+.day-hours-label { font-size: 0.75rem; color: var(--text-subtle); }
+
+.availability-windows { display: flex; flex-direction: column; gap: 7px; margin-top: var(--space-3); padding-left: 25px; }
+.availability-window { display: flex; align-items: center; gap: 7px; }
+.availability-window input[type="time"] { margin-top: 0; width: 110px; font-variant-numeric: tabular-nums; }
+.time-divider { font-size: 0.75rem; color: var(--text-subtle); }
+
+.availability-toolbar { display: flex; align-items: flex-end; gap: var(--space-3); flex-wrap: wrap; }
+.availability-timezone-field { flex: 1; min-width: 220px; }
+.preset-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ------------------------------------------------------ blockouts -- */
+
+.blockout-list { display: flex; flex-direction: column; gap: 6px; }
+.blockout-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.blockout-info { display: flex; flex-direction: column; gap: 2px; }
+.blockout-date { font-size: 0.8125rem; font-weight: 500; }
+.blockout-reason { font-size: 0.75rem; color: var(--text-subtle); }
+.blockout-empty {
+  padding: var(--space-6); text-align: center;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-md);
+  color: var(--text-subtle); font-size: 0.8125rem;
+}
+
+/* ------------------------------------------- manage booking page -- */
+
+.manage-shell { max-width: 620px; margin: var(--space-10) auto; padding: 0 var(--space-4); }
+.manage-card { padding: var(--space-8); }
+.manage-card-empty { text-align: center; }
+.manage-head { margin-bottom: var(--space-6); }
+.manage-title { font-size: 1.375rem; margin: var(--space-3) 0 4px; }
+.manage-lead { color: var(--text-muted); font-size: 0.8125rem; }
+
+.manage-details { display: flex; flex-direction: column; gap: 0; margin: 0 0 var(--space-6); }
+.manage-details > div { display: grid; grid-template-columns: 108px 1fr; gap: var(--space-4); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
+.manage-details > div:last-child { border-bottom: none; }
+.manage-details dt { font-size: 0.75rem; color: var(--text-subtle); }
+.manage-details dd { margin: 0; font-size: 0.8125rem; font-weight: 500; overflow-wrap: anywhere; }
+.manage-tz { color: var(--text-subtle); font-weight: 400; }
+.manage-link { color: var(--text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong); }
+.manage-link:hover { text-decoration-color: currentColor; }
+
+.manage-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-5); }
+.manage-note {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.manage-reschedule { border-top: 1px solid var(--border); padding-top: var(--space-5); }
+.manage-date-field { max-width: 220px; margin-bottom: var(--space-4); }
+
+/* ------------------------------------------------ question editor -- */
+
+.question-editor { display: flex; flex-direction: column; gap: var(--space-3); }
+.question-row {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+.question-row-top { display: flex; gap: var(--space-2); align-items: flex-start; }
+.question-row-top input { margin-top: 0; }
+.question-row-meta { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.question-row-meta select { margin-top: 0; width: auto; min-width: 128px; height: 30px; min-height: 30px; padding: 0 8px; font-size: 0.75rem; }
+.question-required-toggle { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 400; color: var(--text-muted); margin: 0; }
+.question-empty {
+  padding: var(--space-5); text-align: center;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-md);
+  color: var(--text-subtle); font-size: 0.8125rem;
+}
+
+/* ------------------------------------------------ bookings toolbar -- */
+
+.bookings-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-3); flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+.bookings-toolbar-right { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.filter-tabs { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-muted); }
+.filter-tabs button {
+  height: 28px; padding: 0 11px;
+  border: none; background: transparent;
+  border-radius: calc(var(--radius-md) - 2px);
+  color: var(--text-muted);
+  font-size: 0.75rem; font-weight: 500;
+  cursor: pointer;
+  box-shadow: none; transform: none;
+}
+.filter-tabs button:hover { color: var(--text); }
+.filter-tabs button.active { background: var(--surface); color: var(--text); box-shadow: none; border: 1px solid var(--border); }
+
+.search-input-wrap { position: relative; display: flex; align-items: center; }
+.search-input-wrap .search-icon { position: absolute; left: 9px; color: var(--text-subtle); pointer-events: none; display: grid; }
+.search-input {
+  margin-top: 0;
+  height: 32px; min-height: 32px;
+  padding-left: 30px; padding-right: 28px;
+  min-width: 210px;
+  font-size: 0.8125rem;
+}
+.search-clear {
+  position: absolute; right: 6px;
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  border: none; border-radius: 50%;
+  background: var(--surface-muted); color: var(--text-muted);
+  font-size: 0.6875rem; cursor: pointer; padding: 0;
+}
+.search-clear:hover { background: var(--border); color: var(--text); }
+
+/* ------------------------------------------------------- timeline -- */
+
+.timeline { display: flex; flex-direction: column; gap: var(--space-3); }
+.timeline-item { display: grid; grid-template-columns: auto 1fr; gap: var(--space-4); }
+.timeline-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); margin-top: 15px; box-shadow: none; }
+.timeline-card { padding: var(--space-4); }
+
+.booking-card { padding: var(--space-4); }
+.booking-time { font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.booking-email { font-size: 0.75rem; color: var(--text-subtle); }
+.booking-notes { font-size: 0.8125rem; color: var(--text-muted); }
+.booking-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* -------------------------------------------------- event cards -- */
+
+.event-card { padding: var(--space-5); }
+.event-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.event-title-row { display: flex; align-items: center; gap: 7px; }
+.event-color-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.event-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: var(--space-3); }
+.event-card-inactive { opacity: 0.6; }
+.event-card-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.event-card-actions-right { display: flex; gap: 6px; }
+
+/* ------------------------------------------------------ workflows -- */
+
+.workflow-card { padding: var(--space-4); }
+.workflow-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+.workflow-card-name { font-size: 0.875rem; font-weight: 600; }
+.workflow-card-meta { font-size: 0.75rem; color: var(--text-subtle); margin-top: 3px; }
+.workflow-card-actions { display: flex; gap: 5px; }
+.workflow-variable-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.workflow-variable-chip {
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+.workflow-variable-chip:hover { border-color: var(--text-subtle); color: var(--text); }
+
+/* ---------------------------------------------------------- misc -- */
+
+.stack { display: flex; flex-direction: column; gap: var(--space-5); }
+.button-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.toggle-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; font-weight: 400; }
+
+.empty-state {
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  background: transparent;
+}
+.empty-state-icon { opacity: 0.35; margin-bottom: var(--space-3); }
+
+.toast {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.8125rem;
+  padding: var(--space-3) var(--space-4);
+}
+
+.skeleton { border-radius: var(--radius-md); }
+
+.share-url-box, .booking-url-box, .code-block, .integrations-apikey-value {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  box-shadow: none;
+}
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); }
+.stat-card { padding: var(--space-4); }
+.stat-card h4 { font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-emoji { display: none; }
+
+/* Motion: keep it to opacity/colour so nothing shifts under the cursor. */
+* { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ---------------------------------------------------- responsive -- */
+
+@media (max-width: 900px) {
+  .public-layout { grid-template-columns: 1fr; margin: var(--space-4); }
+  .public-info-panel { border-right: none; border-bottom: 1px solid var(--border); }
+  .public-info-panel, .public-booking-panel { padding: var(--space-6); }
+  .manage-card { padding: var(--space-6); }
+  .manage-details > div { grid-template-columns: 1fr; gap: 2px; }
+}
+
+@media (max-width: 720px) {
+  .page-content, .page-header { padding: var(--space-4); }
+  .form-grid { grid-template-columns: 1fr; }
+  .availability-day-head { align-items: flex-start; }
+  .availability-windows { padding-left: 0; }
+  .bookings-toolbar { align-items: stretch; }
+  .search-input { min-width: 0; width: 100%; }
+  .step-indicator { gap: 0; }
+  .step-label { display: none; }
+}
+
+/* ============================================================
+   POLISH PASS
+
+   Corrections found by looking at the rendered pages: controls
+   that carry both an icon and a label, headings that shouted,
+   and colour used where neutral reads calmer.
+   ============================================================ */
+
+/* The legacy base rule makes every <label> a column flexbox. Anything that
+   opts back into flex would silently inherit that direction, so reset it and
+   let the few genuinely vertical labels opt in again below. */
+label { flex-direction: row; }
+.tz-select { flex-direction: column; }
+
+.availability-day-toggle,
+.question-required-toggle,
+.toggle-row,
+.select-all-label,
+.portal-checkbox { flex-direction: row; align-items: center; }
+
+/* Most "icon buttons" also carry a text label, so they must size to
+   their content instead of being locked to a 30px square. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.icon-button svg { flex-shrink: 0; }
+.icon-button.danger-button { border-color: var(--border); background: var(--surface); }
+.icon-button.danger-button:hover { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+
+/* Icon-only controls stay square. */
+.icon-button.square,
+.cal-nav-btn,
+.sidebar-logout-btn,
+.search-clear,
+.toast-close { padding: 0; width: 30px; min-width: 30px; }
+
+.event-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.event-card-actions > .icon-button,
+.event-card-actions > a.icon-button { flex: 0 0 auto; }
+.event-card-actions-right { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+/* Stat tiles: one ink colour, numbers aligned on their digits. */
+.stat-card h4,
+.stat-card strong,
+.stat-card .stat-value,
+.analytics-kpi-card strong {
+  color: var(--text) !important;
+  font-variant-numeric: tabular-nums;
+}
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-5);
+}
+.stat-card p,
+.stat-card span {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+.stat-delta { font-size: 0.6875rem; text-transform: none; letter-spacing: 0; }
+
+/* Section heroes are context, not billboards. */
+.availability-hero h3,
+.workflows-hero h3,
+.analytics-hero h3,
+.tutorial-hero-card h3 { font-size: 1.125rem; letter-spacing: -0.015em; }
+.availability-hero, .workflows-hero {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-6); flex-wrap: wrap;
+}
+.availability-hero-stats, .workflows-hero-stats { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.availability-hero-card, .workflows-stat-card { min-width: 116px; }
+
+/* One line per day: switch, name, then the windows beside them. */
+.availability-day {
+  display: grid;
+  grid-template-columns: 190px 1fr auto;
+  align-items: start;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+.availability-day-head {
+  display: contents;
+}
+.availability-day-toggle {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0; padding-top: 5px;
+}
+.availability-day-toggle .day-name-full { min-width: 0; }
+.availability-day-tools {
+  display: flex; align-items: center; gap: var(--space-3);
+  justify-content: flex-end; padding-top: 6px;
+  grid-column: 3;
+}
+.availability-windows {
+  grid-column: 2; grid-row: 1;
+  margin-top: 0; padding-left: 0;
+}
+.availability-day.inactive .availability-day-tools { padding-top: 7px; }
+.availability-window input[type="time"] { width: 118px; }
+
+/* The timezone control shouldn't span the whole card. */
+.availability-timezone-field { flex: 0 1 320px; min-width: 220px; }
+.availability-toolbar { align-items: flex-end; }
+
+/* Public page: the two columns should be equal height, and the info
+   panel must not stick partway down its own column. */
+.public-layout { align-items: stretch; }
+.public-info-panel { position: static; display: flex; flex-direction: column; }
+
+.tz-select { flex-direction: column; align-items: flex-start; gap: 4px; }
+.tz-select select { min-width: 200px; }
+
+/* Toggles read as neutral state, not a traffic light. */
+.toggle-switch {
+  width: 38px; height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  border: none; padding: 0;
+  position: relative; cursor: pointer;
+  transition: background-color 140ms ease;
+  box-shadow: none;
+}
+.toggle-switch.on, .toggle-switch[aria-checked="true"] { background: var(--accent); }
+.toggle-knob {
+  position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bg);
+  transition: transform 140ms ease;
+  box-shadow: none;
+}
+.toggle-switch.on .toggle-knob,
+.toggle-switch[aria-checked="true"] .toggle-knob { transform: translateX(16px); }
+
+/* Colour swatches: a ring, not a shadow. */
+.color-swatch, .avatar-color-dot {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid var(--border);
+  cursor: pointer; box-shadow: none; transform: none;
+}
+.color-swatch.selected, .color-swatch[aria-pressed="true"], .avatar-color-dot.selected {
+  outline: 2px solid var(--text); outline-offset: 2px;
+}
+.color-picker-grid, .avatar-color-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 6px; }
+
+/* Duration / location choosers share the chip language. */
+.duration-presets { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
+.location-type-chip {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 9px 12px; min-width: 84px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.75rem; cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+  box-shadow: none; transform: none;
+}
+.location-type-chip:hover { border-color: var(--border-strong); color: var(--text); }
+.location-type-chip.active { border-color: var(--text); color: var(--text); background: var(--surface-muted); }
+
+.advanced-toggle-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.75rem; cursor: pointer;
+  box-shadow: none; transform: none;
+}
+.advanced-toggle-btn:hover { background: var(--surface-muted); color: var(--text); }
+
+/* Slug / URL previews shouldn't get clipped mid-word. */
+.slug-chip, .booking-url-text, .share-url-text {
+  overflow-wrap: anywhere;
+  height: auto; min-height: 22px; padding: 3px 9px;
+  font-family: var(--font-mono); font-size: 0.6875rem;
+}
+
+.confirmation-manage-note {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.confirmation-manage-note a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+.join-btn { display: inline-flex; width: auto; margin-bottom: var(--space-5); }
+
+/* Calendar feed card on the profile page. */
+.feed-card { display: flex; flex-direction: column; gap: var(--space-3); }
+.feed-url-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.feed-url {
+  flex: 1; min-width: 240px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+  .availability-day { grid-template-columns: 1fr; gap: var(--space-3); }
+  .availability-day-tools { grid-column: 1; justify-content: flex-start; padding-top: 0; }
+  .availability-windows { grid-column: 1; grid-row: auto; }
+  .availability-hero, .workflows-hero { align-items: flex-start; }
+  .event-card-actions { gap: var(--space-2); }
+}

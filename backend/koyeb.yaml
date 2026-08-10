@@ -1,3 +1,9 @@
+# Alternative deployment target. The primary target is Render
+# (see render.yaml); this is kept in sync so it isn't a trap if you switch.
+#
+# The database is MongoDB Atlas — provide MONGODB_URI as a Koyeb secret.
+# Values below marked `secret:` must exist in your Koyeb secret store.
+
 name: shopper-backend
 services:
   - name: api
@@ -27,12 +33,30 @@ services:
         value: "false"
       - key: SEED_ON_STARTUP
         value: "false"
+      - key: RUN_MIGRATIONS_ON_STARTUP
+        value: "true"
       - key: DEFAULT_TIMEZONE
         value: Asia/Kolkata
-      - key: DATABASE_URL
-        secret: database-url
+
+      - key: MONGODB_URI
+        secret: mongodb-uri
+      - key: MONGODB_DB_NAME
+        value: shopper_prod
+
+      - key: SECRET_KEY
+        secret: secret-key
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: ALLOW_REGISTRATION
+        value: "true"
+
       - key: CORS_ORIGINS
         secret: cors-origins
+      - key: FRONTEND_URL
+        secret: frontend-url
+      - key: API_PUBLIC_URL
+        secret: api-public-url
+
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -44,11 +68,17 @@ services:
       - key: SMTP_FROM
         secret: smtp-from
       - key: SMTP_FROM_NAME
-        value: Shopper Scheduler
+        value: Shopper
       - key: SMTP_TIMEOUT_SECONDS
         value: "10"
       - key: SMTP_RETRY_COUNT
         value: "1"
+
+      - key: REMINDER_SCHEDULER_ENABLED
+        value: "true"
+      - key: REMINDER_POLL_SECONDS
+        value: "60"
+
       - key: OTP_TTL_SECONDS
         value: "600"
       - key: OTP_RATE_LIMIT_SECONDS
@@ -57,3 +87,5 @@ services:
         value: "5"
       - key: VERIFICATION_TOKEN_TTL_SECONDS
         value: "900"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"

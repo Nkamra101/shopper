@@ -33,6 +33,39 @@ export default function ProfilePage() {
   const [savingPw, setSavingPw] = useState(false);
   const [isOAuthUser, setIsOAuthUser] = useState(false);
 
+  const [feedUrl, setFeedUrl] = useState("");
+  const [feedBusy, setFeedBusy] = useState(false);
+
+  useEffect(() => {
+    // Issued lazily — the token is created the first time it's requested.
+    api.getCalendarFeed()
+      .then((data) => setFeedUrl(data.url))
+      .catch(() => setFeedUrl(""));
+  }, []);
+
+  async function copyFeedUrl() {
+    try {
+      await navigator.clipboard.writeText(feedUrl);
+      toast.success("Calendar feed URL copied.");
+    } catch {
+      toast.error("Could not copy. Select the URL and copy it manually.");
+    }
+  }
+
+  async function rotateFeedUrl() {
+    if (!window.confirm("Generate a new feed URL? Any calendar already subscribed will stop updating.")) return;
+    setFeedBusy(true);
+    try {
+      const data = await api.rotateCalendarFeed();
+      setFeedUrl(data.url);
+      toast.success("New feed URL generated. Re-subscribe your calendar.");
+    } catch (error) {
+      toast.error(error.message || "Could not rotate the feed URL.");
+    } finally {
+      setFeedBusy(false);
+    }
+  }
+
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -299,6 +332,27 @@ export default function ProfilePage() {
           <div className="booking-url-box">
             <code className="booking-url-text">{profile.username ? bookingUrl : "Choose a booking username to generate your public link."}</code>
             <button className="secondary-button" onClick={copyBookingUrl} disabled={!profile.username}>Copy</button>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Calendar subscription"
+          subtitle="Add your confirmed bookings to Google Calendar, Apple Calendar or Outlook."
+        >
+          <div className="feed-card">
+            <div className="feed-url-row">
+              <code className="feed-url">{feedUrl || "Loading your private feed URL..."}</code>
+              <button className="secondary-button" onClick={copyFeedUrl} disabled={!feedUrl}>Copy</button>
+            </div>
+            <p className="field-hint">
+              Treat this like a password — anyone with the link can read your bookings. Paste it into
+              your calendar app's "subscribe by URL" option.
+            </p>
+            <div className="button-row">
+              <button className="ghost-button danger" onClick={rotateFeedUrl} disabled={feedBusy || !feedUrl}>
+                {feedBusy ? "Generating..." : "Generate new URL"}
+              </button>
+            </div>
           </div>
         </SectionCard>
 
